@@ -1,0 +1,397 @@
+import {
+  ApplicationStatus,
+  ChannelType,
+  FilterState,
+  InternshipOffer,
+  SearchQuery,
+  SourceProvider,
+  WorkMode,
+} from '../types/domain';
+import { normalizeChannelsFromRaw } from './channelFinder';
+
+export const ALL_SOURCES: readonly SourceProvider[] = [
+  SourceProvider.WelcomeToTheJungle,
+  SourceProvider.LinkedIn,
+  SourceProvider.Indeed,
+  SourceProvider.HelloWork,
+  SourceProvider.JobTeaser,
+  SourceProvider.CompanyCareer,
+];
+
+export const DEFAULT_SEARCH_QUERY: SearchQuery = {
+  keywords: 'Full-Stack Software Engineer Stage',
+  location: 'Paris / Remote',
+  duration: '6 months',
+  workMode: 'all',
+  sources: ALL_SOURCES,
+};
+
+export const DEFAULT_SEED_OFFERS: readonly InternshipOffer[] = [
+  {
+    id: 'offer_alan_fullstack_2026',
+    title: 'Software Engineer Intern (Stage PFE - Full-Stack)',
+    organization: 'Alan',
+    organizationSummary:
+      'European digital health insurance platform building seamless healthcare experiences with React, TypeScript, and Python.',
+    location: 'Paris, France',
+    workMode: WorkMode.Hybrid,
+    duration: '6 months',
+    source: SourceProvider.WelcomeToTheJungle,
+    sourceUrl: 'https://www.welcometothejungle.com/fr/companies/alan/jobs',
+    postedDate: '2026-11-14',
+    description:
+      'Join the Member Experience squad to design and ship customer-facing React & TypeScript features, improve API latency, and participate in weekly product discovery.',
+    requirements: ['React', 'TypeScript', 'Python', 'REST APIs', 'Automated Testing'],
+    channels: [
+      {
+        id: 'ch_alan_form',
+        type: ChannelType.Form,
+        target: 'https://jobs.lever.co/alan',
+        label: 'Lever Application Form',
+        verified: true,
+        sourceUrl: 'https://www.welcometothejungle.com/fr/companies/alan/jobs',
+      },
+      {
+        id: 'ch_alan_email',
+        type: ChannelType.Email,
+        target: 'internships@alan.com',
+        label: 'University Recruiting Inbox',
+        contactName: 'Campus Recruiting Team',
+        verified: true,
+        sourceUrl: 'https://alan.com/careers',
+      },
+    ],
+    status: ApplicationStatus.Ready,
+  },
+  {
+    id: 'offer_mistral_frontend_2026',
+    title: 'Frontend & AI Tooling Intern (Stage 6 mois)',
+    organization: 'Mistral AI',
+    organizationSummary:
+      'Frontier AI lab based in Paris building open and enterprise language models and developer studio interfaces.',
+    location: 'Paris, France',
+    workMode: WorkMode.OnSite,
+    duration: '6 months',
+    source: SourceProvider.CompanyCareer,
+    sourceUrl: 'https://mistral.ai/careers',
+    postedDate: '2026-11-15',
+    description:
+      'Build high-throughput streaming interfaces, interactive prompt evaluation views, and responsive developer dashboards with TypeScript and Tailwind CSS.',
+    requirements: ['TypeScript', 'React', 'Node.js', 'Tailwind CSS', 'Streaming UI'],
+    channels: [
+      {
+        id: 'ch_mistral_form',
+        type: ChannelType.Form,
+        target: 'https://jobs.lever.co/mistral',
+        label: 'Lever Application Form',
+        verified: true,
+        sourceUrl: 'https://mistral.ai/careers',
+      },
+    ],
+    status: ApplicationStatus.Discovered,
+  },
+  {
+    id: 'offer_qonto_product_eng_2026',
+    title: 'Product Engineering Intern — Finance Core',
+    organization: 'Qonto',
+    organizationSummary:
+      'Leading European business finance solution empowering 500,000+ SMEs and freelancers with fast banking and invoicing workflows.',
+    location: 'Paris / Remote FR',
+    workMode: WorkMode.Hybrid,
+    duration: '6 months',
+    source: SourceProvider.LinkedIn,
+    sourceUrl: 'https://www.linkedin.com/jobs/',
+    postedDate: '2026-11-12',
+    description:
+      'Collaborate with product managers and senior engineers to deliver reliable payment workflows, strict TypeScript state modules, and end-to-end integration tests.',
+    requirements: ['TypeScript', 'React', 'PostgreSQL', 'Git', 'Testing'],
+    channels: [
+      {
+        id: 'ch_qonto_email',
+        type: ChannelType.Email,
+        target: 'stages-tech@qonto.com',
+        label: 'Tech Campus Team',
+        contactName: 'Claire Moreau — Tech Talent',
+        verified: true,
+        sourceUrl: 'https://qonto.com/en/careers',
+      },
+      {
+        id: 'ch_qonto_form',
+        type: ChannelType.Form,
+        target: 'https://jobs.lever.co/qonto',
+        label: 'Lever Application Form',
+        verified: true,
+      },
+    ],
+    status: ApplicationStatus.Discovered,
+  },
+  {
+    id: 'offer_doctolib_data_web_2026',
+    title: 'Stage Développeur Web & Plateforme Patient',
+    organization: 'Doctolib',
+    organizationSummary:
+      'Healthcare technology company transforming patient scheduling and practitioner workflows across France, Germany, and Italy.',
+    location: 'Levallois-Perret, France',
+    workMode: WorkMode.Hybrid,
+    duration: '6 months',
+    source: SourceProvider.HelloWork,
+    sourceUrl: 'https://www.hellowork.com/',
+    postedDate: '2026-11-11',
+    description:
+      'Develop accessible React components, optimize mobile-first booking journeys, and monitor quality metrics in agile sprint teams.',
+    requirements: ['React', 'JavaScript', 'Accessibility', 'Node.js', 'Mobile-first UI'],
+    channels: [
+      {
+        id: 'ch_doctolib_form',
+        type: ChannelType.Form,
+        target: 'https://about.doctolib.fr/carrieres/',
+        label: 'Doctolib Career Portal',
+        verified: true,
+      },
+    ],
+    status: ApplicationStatus.Discovered,
+  },
+  {
+    id: 'offer_datadog_observability_2026',
+    title: 'Software Engineering Intern — Frontend Telemetry',
+    organization: 'Datadog',
+    organizationSummary:
+      'Cloud-scale monitoring and security platform with a major R&D engineering hub in Paris.',
+    location: 'Paris, France',
+    workMode: WorkMode.OnSite,
+    duration: '6 months',
+    source: SourceProvider.Indeed,
+    sourceUrl: 'https://fr.indeed.com/',
+    postedDate: '2026-11-10',
+    description:
+      'Build real-time visualization widgets, state management modules, and low-latency query builders for engineering teams.',
+    requirements: ['TypeScript', 'React', 'Data Visualization', 'Performance'],
+    channels: [
+      {
+        id: 'ch_datadog_form',
+        type: ChannelType.Form,
+        target: 'https://careers.datadoghq.com/students/',
+        label: 'Greenhouse Application Form',
+        verified: true,
+      },
+      {
+        id: 'ch_datadog_email',
+        type: ChannelType.Email,
+        target: 'paris-internships@datadoghq.com',
+        label: 'Paris R&D Recruiting',
+        verified: true,
+      },
+    ],
+    status: ApplicationStatus.Discovered,
+  },
+  {
+    id: 'offer_backmarket_stage_2026',
+    title: 'Stage Ingénieur Full-Stack — Marketplace',
+    organization: 'Back Market',
+    organizationSummary:
+      'Global marketplace for refurbished tech dedicated to extending device lifespans with clean engineering.',
+    location: 'Paris / Bordeaux',
+    workMode: WorkMode.Remote,
+    duration: '6 months',
+    source: SourceProvider.JobTeaser,
+    sourceUrl: 'https://www.jobteaser.com/',
+    postedDate: '2026-11-09',
+    description:
+      'Ship high-conversion merchant onboarding tools, API integrations, and automated quality suites.',
+    requirements: ['React', 'TypeScript', 'Python', 'REST APIs'],
+    channels: [
+      {
+        id: 'ch_bm_email',
+        type: ChannelType.Email,
+        target: 'campus@backmarket.com',
+        label: 'Campus & Stage Inbox',
+        verified: true,
+      },
+    ],
+    status: ApplicationStatus.Discovered,
+  },
+];
+
+export const mapRawSourceName = (raw: string | undefined): SourceProvider => {
+  const lower = (raw ?? '').toLowerCase();
+  if (lower.includes('welcome') || lower.includes('wttj')) {
+    return SourceProvider.WelcomeToTheJungle;
+  }
+  if (lower.includes('linkedin')) return SourceProvider.LinkedIn;
+  if (lower.includes('indeed')) return SourceProvider.Indeed;
+  if (lower.includes('hellowork') || lower.includes('regionsjob')) return SourceProvider.HelloWork;
+  if (lower.includes('jobteaser')) return SourceProvider.JobTeaser;
+  return SourceProvider.CompanyCareer;
+};
+
+export const mapRawWorkMode = (raw: string | undefined): WorkMode => {
+  const lower = (raw ?? '').toLowerCase();
+  if (lower.includes('remote') || lower.includes('télétravail') || lower.includes('full remote')) {
+    return WorkMode.Remote;
+  }
+  if (lower.includes('hybrid') || lower.includes('hybride')) {
+    return WorkMode.Hybrid;
+  }
+  return WorkMode.OnSite;
+};
+
+export interface RawOfferInput {
+  readonly id?: string;
+  readonly title: string;
+  readonly organization: string;
+  readonly organizationSummary?: string;
+  readonly location?: string;
+  readonly workMode?: string;
+  readonly duration?: string;
+  readonly source?: string;
+  readonly sourceUrl?: string;
+  readonly postedDate?: string;
+  readonly description?: string;
+  readonly requirements?: readonly string[];
+  readonly applicationEmail?: string;
+  readonly applicationFormUrl?: string;
+  readonly contactName?: string;
+}
+
+export const normalizeOffer = (raw: RawOfferInput, index: number): InternshipOffer => {
+  const slug = `${raw.organization}_${raw.title}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 42);
+  const id = raw.id?.trim() || `offer_${slug}_${index}`;
+  const sourceUrl = raw.sourceUrl?.trim() || 'https://www.welcometothejungle.com';
+
+  const rawChannels: Array<{
+    type: ChannelType;
+    target: string;
+    label: string;
+    contactName?: string;
+  }> = [];
+
+  if (raw.applicationEmail && raw.applicationEmail.trim().includes('@')) {
+    rawChannels.push({
+      type: ChannelType.Email,
+      target: raw.applicationEmail.trim(),
+      label: raw.contactName ? `${raw.contactName} (Email)` : 'Direct Recruiting Email',
+      contactName: raw.contactName,
+    });
+  }
+
+  if (raw.applicationFormUrl && raw.applicationFormUrl.trim().startsWith('http')) {
+    rawChannels.push({
+      type: ChannelType.Form,
+      target: raw.applicationFormUrl.trim(),
+      label: 'Official Application Form',
+    });
+  }
+
+  const channels = normalizeChannelsFromRaw(id, rawChannels, sourceUrl);
+
+  return {
+    id,
+    title: raw.title.trim(),
+    organization: raw.organization.trim(),
+    organizationSummary:
+      raw.organizationSummary?.trim() || `${raw.organization.trim()} engineering and product team.`,
+    location: raw.location?.trim() || 'France / Remote',
+    workMode: mapRawWorkMode(raw.workMode),
+    duration: raw.duration?.trim() || '6 months',
+    source: mapRawSourceName(raw.source),
+    sourceUrl,
+    postedDate: raw.postedDate?.trim() || new Date().toISOString().slice(0, 10),
+    description:
+      raw.description?.trim() ||
+      `Internship / stage opportunity as ${raw.title.trim()} at ${raw.organization.trim()}.`,
+    requirements: (raw.requirements ?? []).map((item) => item.trim()).filter(Boolean),
+    channels,
+    status: ApplicationStatus.Discovered,
+  };
+};
+
+export const deduplicateOffers = (
+  incoming: readonly InternshipOffer[],
+  existing: readonly InternshipOffer[]
+): readonly InternshipOffer[] => {
+  const seenKeys = new Set<string>();
+  const result: InternshipOffer[] = [];
+
+  const registerKey = (offer: InternshipOffer) =>
+    `${offer.organization.toLowerCase().trim()}::${offer.title.toLowerCase().trim()}`;
+
+  // Preserve existing prepared/sent offers first
+  for (const offer of existing) {
+    const key = registerKey(offer);
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      result.push(offer);
+    }
+  }
+
+  // Prepend new incoming offers at the top when unique
+  const newUnique: InternshipOffer[] = [];
+  for (const offer of incoming) {
+    const key = registerKey(offer);
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      newUnique.push(offer);
+    }
+  }
+
+  return [...newUnique, ...result];
+};
+
+export const filterOffers = (
+  offers: readonly InternshipOffer[],
+  filters: FilterState
+): readonly InternshipOffer[] => {
+  const query = filters.textFilter.trim().toLowerCase();
+
+  return offers.filter((offer) => {
+    if (filters.sourceFilter !== 'all' && offer.source !== filters.sourceFilter) {
+      return false;
+    }
+
+    if (
+      filters.channelFilter !== 'all' &&
+      !offer.channels.some((ch) => ch.type === filters.channelFilter)
+    ) {
+      return false;
+    }
+
+    if (query.length > 0) {
+      const haystack = [
+        offer.title,
+        offer.organization,
+        offer.location,
+        offer.description,
+        offer.requirements.join(' '),
+      ]
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(query)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+};
+
+export const validateSearchQuery = (
+  query: SearchQuery
+): { readonly valid: boolean; readonly message?: string } => {
+  if (query.keywords.trim().length < 2) {
+    return {
+      valid: false,
+      message: 'Please enter at least 2 characters for the internship role or domain.',
+    };
+  }
+  if (query.sources.length === 0) {
+    return {
+      valid: false,
+      message: 'Select at least one internship source to search.',
+    };
+  }
+  return { valid: true };
+};

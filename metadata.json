@@ -1,0 +1,6 @@
+{
+  "name": "StagePilot",
+  "description": "Multi-source internship and stage discovery, tailored cover letter and CV preparation, application channel discovery, and single-click dispatch.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
