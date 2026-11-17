@@ -11,12 +11,17 @@ import {
 import { normalizeChannelsFromRaw } from './channelFinder';
 
 export const ALL_SOURCES: readonly string[] = [
+  SourceProvider.CompanyCareer,
+  SourceProvider.FranceTravail,
+  SourceProvider.Meteojob,
+  SourceProvider.Apec,
   SourceProvider.WelcomeToTheJungle,
+  SourceProvider.HelloWork,
+  SourceProvider.Remotive,
+  SourceProvider.WeWorkRemotely,
   SourceProvider.LinkedIn,
   SourceProvider.Indeed,
-  SourceProvider.HelloWork,
   SourceProvider.JobTeaser,
-  SourceProvider.CompanyCareer,
 ];
 
 export const DEFAULT_SEARCH_QUERY: SearchQuery = {
@@ -28,7 +33,11 @@ export const DEFAULT_SEARCH_QUERY: SearchQuery = {
   startDateFrom: '',
   startDateTo: '',
   workMode: 'all',
-  sources: ALL_SOURCES,
+  educationLevel: '',
+  languages: [],
+  experienceLevel: '',
+  includeExternalDiscovery: true,
+  sources: ALL_SOURCES.slice(0, 8),
 };
 
 export const mapRawSourceName = (
@@ -57,6 +66,11 @@ export const mapRawSourceName = (
   if (lower.includes('welcome') || lower.includes('wttj')) {
     return SourceProvider.WelcomeToTheJungle;
   }
+  if (lower.includes('meteojob')) return SourceProvider.Meteojob;
+  if (lower.includes('apec')) return SourceProvider.Apec;
+  if (lower.includes('france travail') || lower.includes('pole-emploi')) return SourceProvider.FranceTravail;
+  if (lower.includes('remotive')) return SourceProvider.Remotive;
+  if (lower.includes('we work remotely') || lower.includes('weworkremotely')) return SourceProvider.WeWorkRemotely;
   if (lower.includes('linkedin')) return SourceProvider.LinkedIn;
   if (lower.includes('indeed')) return SourceProvider.Indeed;
   if (lower.includes('hellowork') || lower.includes('regionsjob')) return SourceProvider.HelloWork;
@@ -137,6 +151,7 @@ export const isOfferWithinDateRange = (
 
 export interface RawOfferInput {
   readonly id?: string;
+  readonly externalId?: string | null;
   readonly title: string;
   readonly organization: string;
   readonly organizationSummary?: string | null;
@@ -148,11 +163,20 @@ export interface RawOfferInput {
   readonly startDate?: string | null;
   readonly endDate?: string | null;
   readonly source?: string;
+  readonly sources?: readonly string[];
   readonly sourceUrl?: string;
+  readonly alternateUrls?: readonly string[];
   readonly applicationUrl?: string | null;
   readonly postedDate?: string | null;
   readonly collectedAt?: string;
+  readonly discoveredAt?: string;
+  readonly collectionMode?: InternshipOffer['collectionMode'];
+  readonly accessMode?: InternshipOffer['accessMode'];
   readonly verificationStatus?: InternshipOffer['verificationStatus'];
+  readonly verificationLevel?: InternshipOffer['verificationLevel'];
+  readonly educationLevel?: string | null;
+  readonly experienceLevel?: string | null;
+  readonly languages?: readonly string[];
   readonly matchScore?: number;
   readonly description?: string;
   readonly requirements?: readonly string[];
@@ -174,6 +198,11 @@ export const normalizeOffer = (
   const id = raw.id?.trim() || `offer_${slug}_${index}`;
   const sourceUrl = raw.sourceUrl?.trim() || '';
 
+  const isExternalUnverified =
+    raw.verificationLevel === 'externally_unverified' ||
+    raw.verificationStatus === 'externally_unverified' ||
+    raw.collectionMode === 'discovered';
+
   const rawChannels: Array<{
     type: ChannelType;
     target: string;
@@ -181,7 +210,7 @@ export const normalizeOffer = (
     contactName?: string;
   }> = [];
 
-  if (raw.applicationEmail && raw.applicationEmail.trim().includes('@')) {
+  if (!isExternalUnverified && raw.applicationEmail && raw.applicationEmail.trim().includes('@')) {
     rawChannels.push({
       type: ChannelType.Email,
       target: raw.applicationEmail.trim(),
@@ -190,7 +219,9 @@ export const normalizeOffer = (
     });
   }
 
-  const resolvedFormUrl = raw.applicationFormUrl?.trim() || raw.applicationUrl?.trim() || '';
+  const resolvedFormUrl = isExternalUnverified
+    ? ''
+    : raw.applicationFormUrl?.trim() || raw.applicationUrl?.trim() || '';
   if (resolvedFormUrl.startsWith('http')) {
     rawChannels.push({
       type: ChannelType.Form,
@@ -199,14 +230,21 @@ export const normalizeOffer = (
     });
   }
 
-  const channels = normalizeChannelsFromRaw(id, rawChannels, sourceUrl);
+  const channels = isExternalUnverified ? [] : normalizeChannelsFromRaw(id, rawChannels, sourceUrl);
   const durationMonths =
     typeof raw.durationMonths === 'number' && raw.durationMonths > 0
       ? raw.durationMonths
       : parseDurationMonths(raw.duration);
 
+  const primarySource = mapRawSourceName(raw.source, customSources);
+  const sources =
+    raw.sources && raw.sources.length > 0
+      ? raw.sources.map((s) => mapRawSourceName(s, customSources))
+      : [primarySource];
+
   return {
     id,
+    externalId: raw.externalId ?? null,
     title: raw.title.trim(),
     organization: raw.organization.trim(),
     organizationSummary:
@@ -218,12 +256,22 @@ export const normalizeOffer = (
     durationMonths,
     startDate: raw.startDate?.trim() || null,
     endDate: raw.endDate?.trim() || null,
-    source: mapRawSourceName(raw.source, customSources),
+    source: primarySource,
+    sources: Array.from(new Set(sources)),
     sourceUrl,
+    alternateUrls: raw.alternateUrls ?? [],
     applicationUrl: resolvedFormUrl || null,
     postedDate: raw.postedDate?.trim() || null,
     collectedAt: raw.collectedAt,
+    discoveredAt: raw.discoveredAt ?? raw.collectedAt,
+    collectionMode: raw.collectionMode ?? (isExternalUnverified ? 'discovered' : 'collected'),
+    accessMode: raw.accessMode,
     verificationStatus: raw.verificationStatus,
+    verificationLevel:
+      raw.verificationLevel ?? (isExternalUnverified ? 'externally_unverified' : undefined),
+    educationLevel: raw.educationLevel ?? null,
+    experienceLevel: raw.experienceLevel ?? null,
+    languages: raw.languages ?? [],
     matchScore: typeof raw.matchScore === 'number' ? raw.matchScore : undefined,
     description:
       raw.description?.trim() ||
@@ -238,7 +286,7 @@ export const deduplicateOffers = (
   incoming: readonly InternshipOffer[],
   existing: readonly InternshipOffer[]
 ): readonly InternshipOffer[] => {
-  const seenKeys = new Set<string>();
+  const indexByKey = new Map<string, number>();
   const result: InternshipOffer[] = [];
 
   const registerKey = (offer: InternshipOffer) =>
@@ -247,18 +295,28 @@ export const deduplicateOffers = (
   // Preserve existing prepared/sent offers first
   for (const offer of existing) {
     const key = registerKey(offer);
-    if (!seenKeys.has(key)) {
-      seenKeys.add(key);
+    if (!indexByKey.has(key)) {
+      indexByKey.set(key, result.length);
       result.push(offer);
     }
   }
 
-  // Prepend new incoming offers at the top when unique
+  // Prepend new incoming offers at the top when unique; merge alternate sources if matched
   const newUnique: InternshipOffer[] = [];
   for (const offer of incoming) {
     const key = registerKey(offer);
-    if (!seenKeys.has(key)) {
-      seenKeys.add(key);
+    const existingIdx = indexByKey.get(key);
+    if (existingIdx !== undefined) {
+      const target = result[existingIdx];
+      const mergedSources = Array.from(
+        new Set([...(target.sources ?? [target.source]), ...(offer.sources ?? [offer.source])])
+      );
+      result[existingIdx] = {
+        ...target,
+        sources: mergedSources,
+      };
+    } else {
+      indexByKey.set(key, existing.length + newUnique.length);
       newUnique.push(offer);
     }
   }
@@ -273,7 +331,11 @@ export const filterOffers = (
   const query = filters.textFilter.trim().toLowerCase();
 
   return offers.filter((offer) => {
-    if (filters.sourceFilter !== 'all' && offer.source !== filters.sourceFilter) {
+    if (
+      filters.sourceFilter !== 'all' &&
+      offer.source !== filters.sourceFilter &&
+      !(offer.sources ?? []).includes(filters.sourceFilter)
+    ) {
       return false;
     }
 
@@ -282,6 +344,29 @@ export const filterOffers = (
       !offer.channels.some((ch) => ch.type === filters.channelFilter)
     ) {
       return false;
+    }
+
+    if (filters.verificationFilter && filters.verificationFilter !== 'all') {
+      const mode = offer.collectionMode ?? 'collected';
+      const level = offer.verificationLevel ?? 'collected';
+      if (filters.verificationFilter === 'collected' && mode !== 'collected') return false;
+      if (filters.verificationFilter === 'discovered' && mode !== 'discovered') return false;
+      if (
+        filters.verificationFilter === 'verified' &&
+        level !== 'verified' &&
+        offer.verificationStatus !== 'verified_ats_api' &&
+        offer.verificationStatus !== 'verified_offer'
+      ) {
+        return false;
+      }
+      if (
+        filters.verificationFilter === 'externally_unverified' &&
+        level !== 'externally_unverified' &&
+        offer.verificationStatus !== 'externally_unverified' &&
+        offer.verificationStatus !== 'unverified_url'
+      ) {
+        return false;
+      }
     }
 
     if (
@@ -305,6 +390,7 @@ export const filterOffers = (
         offer.location,
         offer.description,
         offer.requirements.join(' '),
+        (offer.sources ?? [offer.source]).join(' '),
       ]
         .join(' ')
         .toLowerCase();

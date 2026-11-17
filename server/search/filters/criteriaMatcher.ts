@@ -110,6 +110,47 @@ const STOPWORDS = new Set([
   'in',
 ]);
 
+export const TECH_SYNONYM_GROUPS: ReadonlyArray<readonly string[]> = [
+  ['javascript', 'js', 'ecmascript'],
+  ['typescript', 'ts'],
+  ['react', 'reactjs', 'react.js'],
+  ['node.js', 'node', 'nodejs'],
+  ['postgresql', 'postgres', 'psql'],
+  ['python', 'py'],
+  ['next.js', 'nextjs'],
+  ['vue', 'vuejs', 'vue.js'],
+  ['kubernetes', 'k8s'],
+  ['machine learning', 'ml'],
+  ['artificial intelligence', 'ai', 'ia', 'intelligence artificielle'],
+  ['business intelligence', 'bi', 'informatique décisionnelle', 'décisionnel'],
+  ['c#', 'csharp'],
+  ['tailwind', 'tailwindcss'],
+  ['developpeur', 'développeur', 'developer', 'dev', 'software engineer', 'ingénieur'],
+];
+
+export const expandTermWithSynonyms = (term: string): readonly string[] => {
+  const clean = term.toLowerCase().trim();
+  if (!clean) return [];
+  const expanded = new Set<string>([clean]);
+  for (const group of TECH_SYNONYM_GROUPS) {
+    if (group.includes(clean)) {
+      for (const alias of group) expanded.add(alias);
+    }
+  }
+  return Array.from(expanded);
+};
+
+const corpusMatchesTermOrSynonym = (corpus: string, term: string): boolean => {
+  const aliases = expandTermWithSynonyms(term);
+  return aliases.some((alias) => {
+    if (alias.length <= 2) {
+      const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(corpus);
+    }
+    return corpus.includes(alias);
+  });
+};
+
 export const tokenizeKeywords = (keywords: string): readonly string[] =>
   keywords
     .toLowerCase()
@@ -127,7 +168,7 @@ const matchesLocationCriteria = (
   criteria: SearchCriteria
 ): boolean => {
   const requestedLoc = criteria.location.trim().toLowerCase();
-  if (!requestedLoc || requestedLoc === 'all' || requestedLoc === 'anywhere') {
+  if (!requestedLoc || requestedLoc === 'all' || requestedLoc === 'anywhere' || requestedLoc === 'international') {
     return true;
   }
 
@@ -147,13 +188,16 @@ const matchesLocationCriteria = (
     return true;
   }
 
+  // Discovered search links may only contain city inside title/description rather than structured location
+  const searchCorpus = `${offerLocLower} ${offer.title.toLowerCase()}`;
+
   for (const part of locParts) {
     if (part === 'remote' || part === 'télétravail') continue;
-    if (offerLocLower.includes(part)) return true;
+    if (searchCorpus.includes(part)) return true;
 
     const neighbors = REGION_NEIGHBORS[part];
     if (neighbors && (criteria.radiusKm === undefined || criteria.radiusKm >= 15)) {
-      if (neighbors.some((n) => offerLocLower.includes(n))) return true;
+      if (neighbors.some((n) => searchCorpus.includes(n))) return true;
     }
   }
 
@@ -163,7 +207,6 @@ const matchesLocationCriteria = (
     offerLocLower.includes('france') &&
     (criteria.radiusKm === undefined || criteria.radiusKm >= 50)
   ) {
-    // Allow hybrid/remote French offers if radius >= 50km, otherwise keep city match strict
     if (offer.workMode === 'Remote') return true;
   }
 
@@ -185,6 +228,37 @@ const matchesWorkModeCriteria = (
   if (normalized === 'on-site' || normalized === 'présentiel') {
     return offer.workMode === 'On-site';
   }
+  return true;
+};
+
+const matchesEducationAndExperience = (
+  offer: NormalizedScrapedOffer,
+  criteria: SearchCriteria
+): boolean => {
+  if (criteria.educationLevel?.trim() && offer.educationLevel) {
+    const reqEdu = criteria.educationLevel.toLowerCase();
+    const offerEdu = offer.educationLevel.toLowerCase();
+    const isMaster = /bac\s*\+\s*5|master|m2|miage|ingénieur/.test(reqEdu);
+    const offerIsBachelorOnly = /bac\s*\+\s*2|bts|dut/.test(offerEdu) && !/bac\s*\+\s*[345]/.test(offerEdu);
+    if (isMaster && offerIsBachelorOnly) return false;
+  }
+
+  if (criteria.experienceLevel?.trim() && offer.experienceLevel) {
+    const reqExp = criteria.experienceLevel.toLowerCase();
+    const seniorYears = offer.experienceLevel.match(/([3-9]|1\d)\+/);
+    if ((reqExp.includes('junior') || reqExp.includes('no experience') || reqExp.includes('stage')) && seniorYears) {
+      return false;
+    }
+  }
+
+  if (criteria.languages && criteria.languages.length > 0 && offer.languages.length > 0) {
+    const reqLangs = criteria.languages.map((l) => l.toLowerCase());
+    const hasLang = offer.languages.some((ol) =>
+      reqLangs.some((rl) => ol.toLowerCase().includes(rl) || rl.includes(ol.toLowerCase()))
+    );
+    if (!hasLang) return false;
+  }
+
   return true;
 };
 
@@ -211,9 +285,9 @@ const matchesKeywordOrDomain = (
     return true;
   }
 
-  const hasKeywordHit = keywordTokens.some((tok) => corpus.includes(tok));
-  const hasDomainHit = domainTerms.some((term) => corpus.includes(term));
-  const hasSkillHit = explicitSkills.some((sk) => corpus.includes(sk));
+  const hasKeywordHit = keywordTokens.some((tok) => corpusMatchesTermOrSynonym(corpus, tok));
+  const hasDomainHit = domainTerms.some((term) => corpusMatchesTermOrSynonym(corpus, term));
+  const hasSkillHit = explicitSkills.some((sk) => corpusMatchesTermOrSynonym(corpus, sk));
 
   return hasKeywordHit || hasDomainHit || hasSkillHit;
 };
@@ -222,7 +296,12 @@ export const matchesMandatoryCriteria = (
   offer: NormalizedScrapedOffer,
   criteria: SearchCriteria
 ): boolean => {
-  // 1. Must be an internship/stage (unless title lacks contract marker only on a dedicated internship source)
+  // 0. Reject expired offers
+  if (offer.verificationLevel === 'expired') {
+    return false;
+  }
+
+  // 1. Must prioritize internship/stage
   if (!isInternshipOffer(offer)) {
     return false;
   }
@@ -261,7 +340,12 @@ export const matchesMandatoryCriteria = (
     return false;
   }
 
-  // 6. Keywords / domains / skills relevance check
+  // 6. Education / Experience / Language checks
+  if (!matchesEducationAndExperience(offer, criteria)) {
+    return false;
+  }
+
+  // 7. Keywords / domains / skills relevance check (with technical synonyms)
   if (!matchesKeywordOrDomain(offer, criteria)) {
     return false;
   }
@@ -277,41 +361,44 @@ export const computeRelevanceScore = (
   const titleLower = offer.title.toLowerCase();
   const corpus = `${offer.title} ${offer.description} ${offer.requirements.join(' ')}`.toLowerCase();
 
-  // Keyword hits (title hits weigh more than description hits)
+  // Keyword hits with synonym awareness (title hits weigh more than description hits)
   const keywordTokens = tokenizeKeywords(criteria.keywords);
   if (keywordTokens.length > 0) {
     let tokenPoints = 0;
     for (const tok of keywordTokens) {
-      if (titleLower.includes(tok)) tokenPoints += 12;
-      else if (corpus.includes(tok)) tokenPoints += 5;
+      if (corpusMatchesTermOrSynonym(titleLower, tok)) tokenPoints += 12;
+      else if (corpusMatchesTermOrSynonym(corpus, tok)) tokenPoints += 5;
     }
     score += Math.min(30, tokenPoints);
   }
 
-  // Explicit skills hits
+  // Explicit skills hits with synonym matching
   const reqSkills = (criteria.skills ?? []).map((s) => s.toLowerCase().trim()).filter(Boolean);
   if (reqSkills.length > 0) {
-    const matchedCount = reqSkills.filter((sk) => corpus.includes(sk)).length;
+    const matchedCount = reqSkills.filter((sk) => corpusMatchesTermOrSynonym(corpus, sk)).length;
     score += Math.round((matchedCount / reqSkills.length) * 20);
   }
 
   // Domain taxonomy bonus
   for (const dom of criteria.domains ?? []) {
     const terms = DOMAIN_TAXONOMY[dom.toLowerCase().trim()] ?? [dom.toLowerCase().trim()];
-    if (terms.some((t) => corpus.includes(t))) {
+    if (terms.some((t) => corpusMatchesTermOrSynonym(corpus, t))) {
       score += 8;
       break;
     }
   }
 
-  // Verification quality & channel completeness
-  if (offer.verificationStatus === 'verified_ats_api' || offer.verificationStatus === 'verified_offer') {
-    score += 10;
+  // Prioritize collected & verified offers over externally_unverified links
+  if (offer.verificationLevel === 'verified') {
+    score += 12;
+  } else if (offer.collectionMode === 'collected') {
+    score += 7;
   }
-  if (offer.applicationEmail) score += 6;
-  if (offer.applicationUrl) score += 6;
-  if (offer.durationMonths !== null) score += 4;
-  if (offer.startDate !== null) score += 4;
+
+  if (offer.applicationEmail) score += 5;
+  if (offer.applicationUrl) score += 5;
+  if (offer.durationMonths !== null) score += 3;
+  if (offer.startDate !== null) score += 3;
 
   return Math.max(0, Math.min(100, score));
 };

@@ -47,11 +47,25 @@ export const isSpecificOfferUrl = (rawUrl: string): boolean => {
 export interface OfferVerificationResult {
   readonly valid: boolean;
   readonly status: VerificationStatus;
+  readonly verificationLevel:
+    | 'verified'
+    | 'collected'
+    | 'discovered'
+    | 'externally_unverified'
+    | 'expired';
+  readonly collectionMode: 'collected' | 'discovered';
   readonly normalizedOriginalUrl: string;
   readonly normalizedApplicationUrl: string | null;
   readonly normalizedEmail: string | null;
   readonly reasons: readonly string[];
 }
+
+const isOfferExpired = (raw: RawScrapedOffer): boolean => {
+  if (raw.isExpired) return true;
+  if (!raw.expiresAt) return false;
+  const ts = Date.parse(raw.expiresAt);
+  return !Number.isNaN(ts) && ts < Date.now();
+};
 
 export const verifyScrapedOffer = (raw: RawScrapedOffer): OfferVerificationResult => {
   const reasons: string[] = [];
@@ -81,20 +95,43 @@ export const verifyScrapedOffer = (raw: RawScrapedOffer): OfferVerificationResul
       ? raw.applicationEmail.trim().toLowerCase()
       : null;
 
+  const isExternalDiscovery =
+    Boolean(raw.isExternalDiscovery) || raw.collectionMode === 'discovered';
+  const collectionMode: 'collected' | 'discovered' = isExternalDiscovery
+    ? 'discovered'
+    : 'collected';
+
   let status: VerificationStatus = 'unverified_url';
-  if (origCheck.safe && origCheck.normalizedUrl) {
+  let verificationLevel: OfferVerificationResult['verificationLevel'] = 'externally_unverified';
+
+  if (isOfferExpired(raw)) {
+    status = 'expired';
+    verificationLevel = 'expired';
+  } else if (isExternalDiscovery) {
+    // Never mark a discovery link as verified when target page was not legally fetched
+    status = 'externally_unverified';
+    verificationLevel = 'externally_unverified';
+  } else if (origCheck.safe && origCheck.normalizedUrl) {
     if (raw.isAtsApi) {
       status = 'verified_ats_api';
+      verificationLevel = 'verified';
+    } else if (raw.isAuthorizedApi || raw.isRssFeed) {
+      status = 'collected';
+      verificationLevel = 'collected';
     } else if (isSpecificOfferUrl(origCheck.normalizedUrl)) {
       status = 'verified_offer';
+      verificationLevel = 'verified';
     } else {
       status = 'generic_career_page';
+      verificationLevel = 'collected';
     }
   }
 
   return {
     valid: reasons.length === 0 && origCheck.safe,
     status,
+    verificationLevel,
+    collectionMode,
     normalizedOriginalUrl: origCheck.normalizedUrl ?? raw.originalUrl,
     normalizedApplicationUrl: normalizedAppUrl,
     normalizedEmail,

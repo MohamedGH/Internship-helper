@@ -82,3 +82,28 @@ test('buildDispatchBundle produces mailto URI for email channel and form URL for
   assert.ok(clip.includes('Camille Laurent'));
   assert.ok(clip.includes('Subject:'));
 });
+
+test('evaluatePreFlightChecks blocks externally_unverified and expired offers from one-click send', () => {
+  const baseOffer = buildDispatchTestOffer();
+  const dossier = buildPreparedDossier(baseOffer, profile, 'fr');
+
+  const unverifiedOffer = {
+    ...baseOffer,
+    collectionMode: 'discovered' as const,
+    verificationLevel: 'externally_unverified' as const,
+    verificationStatus: 'externally_unverified' as const,
+  };
+  const unverifiedReport = evaluatePreFlightChecks(unverifiedOffer, profile, dossier);
+  assert.equal(unverifiedReport.readyToSend, false);
+  assert.match(unverifiedReport.blockingReason ?? '', /unverified external/i);
+
+  const expiredOffer = {
+    ...baseOffer,
+    verificationLevel: 'expired' as const,
+    verificationStatus: 'expired' as const,
+  };
+  const expiredReport = evaluatePreFlightChecks(expiredOffer, profile, dossier);
+  assert.equal(expiredReport.readyToSend, false);
+  assert.match(expiredReport.blockingReason ?? '', /expired/i);
+});
+

@@ -22,6 +22,7 @@ import {
 } from '../managers/stateManager';
 import { extractMatchingSkills } from '../modules/dossierComposer';
 import { selectPreferredChannel } from '../modules/channelFinder';
+import { isOfferExternallyUnverified } from '../modules/oneClickDispatcher';
 import { AddCustomSourceModal } from './AddCustomSourceModal';
 
 interface DiscoverViewProps {
@@ -29,7 +30,15 @@ interface DiscoverViewProps {
   readonly onGoToProfile: () => void;
 }
 
-const getStatusLabel = (status: ApplicationStatus): string => {
+const getStatusLabel = (
+  status: ApplicationStatus,
+  isUnverifiedExternal: boolean
+): string => {
+  if (isUnverifiedExternal) {
+    return status === ApplicationStatus.Sent
+      ? 'Logged externally'
+      : 'External link only (verify on site)';
+  }
   switch (status) {
     case ApplicationStatus.Discovered:
       return 'Not prepared';
@@ -54,19 +63,46 @@ const IT_DOMAINS = [
   'Informatique décisionnelle',
 ] as const;
 
-const getVerificationLabel = (status?: InternshipOffer['verificationStatus']): string | null => {
-  switch (status) {
-    case 'verified_ats_api':
-      return 'Verified ATS API';
-    case 'verified_offer':
-      return 'Verified Offer URL';
-    case 'generic_career_page':
-      return 'Career Page Link';
-    case 'unverified_url':
-      return 'Unverified URL';
+const getAccessModeShortLabel = (mode?: CustomSource['accessMode']): string => {
+  switch (mode) {
+    case 'ats_api':
+      return 'ATS API';
+    case 'official_api':
+      return 'Official API';
+    case 'rss_feed':
+      return 'RSS Feed';
+    case 'authorized_html':
+      return 'Authorized HTML';
+    case 'search_index':
+      return 'Search Index';
+    case 'link_only':
+      return 'Link / Index';
+    case 'disabled':
+      return 'Disabled';
     default:
-      return null;
+      return 'Custom';
   }
+};
+
+const getCollectionModeLabel = (offer: InternshipOffer): string =>
+  offer.collectionMode === 'discovered' ? 'Discovered (External)' : 'Collected (Authorized)';
+
+const getVerificationLabel = (offer: InternshipOffer): string | null => {
+  const level = offer.verificationLevel;
+  if (level === 'expired' || offer.verificationStatus === 'expired') return 'Expired';
+  if (level === 'externally_unverified' || offer.verificationStatus === 'externally_unverified') {
+    return 'Externally Unverified';
+  }
+  if (offer.verificationStatus === 'verified_ats_api') return 'Verified ATS API';
+  if (offer.verificationStatus === 'verified_offer' || level === 'verified') {
+    return 'Verified Offer';
+  }
+  if (offer.verificationStatus === 'collected' || level === 'collected') {
+    return 'Collected Feed / API';
+  }
+  if (offer.verificationStatus === 'generic_career_page') return 'Career Page Link';
+  if (offer.verificationStatus === 'unverified_url') return 'Externally Unverified';
+  return null;
 };
 
 export const DiscoverView: React.FC<DiscoverViewProps> = ({
@@ -340,6 +376,51 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                 className="w-full h-11 px-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700 transition-colors"
               />
             </div>
+            <div>
+              <label
+                htmlFor="search-education"
+                className="block text-xs font-medium text-slate-700 mb-1"
+              >
+                Study Level (Optional)
+              </label>
+              <input
+                id="search-education"
+                type="text"
+                value={state.searchQuery.educationLevel ?? ''}
+                onChange={(e) =>
+                  dispatch({
+                    type: 'SET_SEARCH_QUERY',
+                    query: { educationLevel: e.target.value },
+                  })
+                }
+                placeholder="e.g. Bac+5 / Master / MIAGE"
+                className="w-full h-11 px-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700 transition-colors"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="search-language"
+                className="block text-xs font-medium text-slate-700 mb-1"
+              >
+                Language Preference
+              </label>
+              <select
+                id="search-language"
+                value={(state.searchQuery.languages ?? [])[0] ?? ''}
+                onChange={(e) =>
+                  dispatch({
+                    type: 'SET_SEARCH_QUERY',
+                    query: { languages: e.target.value ? [e.target.value] : [] },
+                  })
+                }
+                className="w-full h-11 px-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700 transition-colors"
+              >
+                <option value="">French &amp; English (All)</option>
+                <option value="French">French (FR)</option>
+                <option value="English">English (EN / International)</option>
+              </select>
+            </div>
           </div>
 
           {/* IT Domains selector */}
@@ -365,16 +446,18 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             })}
           </div>
 
-          {/* Multi-source selector buttons */}
+          {/* Multi-source provider toggles with explicit Access Mode */}
           <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-slate-500 mr-1">Sources:</span>
+            <span className="text-xs font-medium text-slate-500 mr-1">Sources &amp; Access Modes:</span>
             {state.customSources.map((source) => {
               const selected = state.searchQuery.sources.includes(source.name);
+              const modeLabel = getAccessModeShortLabel(source.accessMode);
               return (
                 <button
                   key={source.id}
                   type="button"
                   aria-pressed={selected}
+                  title={source.policySummary ?? source.description}
                   onClick={() => toggleSourceInQuery(source.name)}
                   className={`px-3 py-1.5 min-h-[36px] text-xs font-medium rounded-lg border transition-colors whitespace-nowrap inline-flex items-center gap-1.5 ${
                     selected
@@ -383,15 +466,13 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                   }`}
                 >
                   <span>{source.name}</span>
-                  {!source.isDefault && (
-                    <span
-                      className={`text-[10px] px-1 py-0.2 rounded font-normal ${
-                        selected ? 'bg-slate-800 text-blue-200' : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
-                      Custom
-                    </span>
-                  )}
+                  <span
+                    className={`text-[10px] font-mono ${
+                      selected ? 'text-slate-300' : 'text-slate-400'
+                    }`}
+                  >
+                    ({source.isDefault ? modeLabel : 'Custom'})
+                  </span>
                 </button>
               );
             })}
@@ -402,7 +483,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
               className="px-3 py-1.5 min-h-[36px] text-xs font-semibold rounded-lg border border-dashed border-blue-300 text-blue-700 bg-blue-50/50 hover:bg-blue-50 hover:border-blue-400 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
             >
               <Plus className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-              Add Custom Source
+              Manage &amp; Add Sources
             </button>
           </div>
         </form>
@@ -563,58 +644,98 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           </div>
         </div>
 
-        {/* Date Range Sub-row for Filtering */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs text-slate-600">
-          <span className="font-medium text-slate-700">Filter Start Date:</span>
-          <div className="flex items-center gap-1.5">
-            <label htmlFor="filter-date-from" className="text-slate-500">
-              From:
-            </label>
-            <input
-              id="filter-date-from"
-              type="date"
-              value={state.filters.dateRangeFrom}
-              onChange={(e) =>
-                dispatch({
-                  type: 'SET_FILTERS',
-                  filters: { dateRangeFrom: e.target.value },
-                })
-              }
-              className="h-8 px-2 text-xs text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-700"
-            />
+        {/* Verification & Collection Mode Filter Row */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs text-slate-600">
+          <div
+            role="group"
+            aria-label="Filter by collection and verification status"
+            className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg"
+          >
+            {(
+              [
+                { key: 'all', label: 'All Results' },
+                { key: 'collected', label: 'Collected' },
+                { key: 'verified', label: 'Verified' },
+                { key: 'discovered', label: 'Discovered Links' },
+                { key: 'externally_unverified', label: 'Unverified External' },
+              ] as const
+            ).map((tab) => {
+              const active = state.filters.verificationFilter === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() =>
+                    dispatch({
+                      type: 'SET_FILTERS',
+                      filters: { verificationFilter: tab.key },
+                    })
+                  }
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+                    active
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
-          <div className="flex items-center gap-1.5">
-            <label htmlFor="filter-date-to" className="text-slate-500">
-              To:
-            </label>
-            <input
-              id="filter-date-to"
-              type="date"
-              value={state.filters.dateRangeTo}
-              onChange={(e) =>
-                dispatch({
-                  type: 'SET_FILTERS',
-                  filters: { dateRangeTo: e.target.value },
-                })
-              }
-              className="h-8 px-2 text-xs text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-700"
-            />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-slate-700">Start Date:</span>
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="filter-date-from" className="text-slate-500">
+                From:
+              </label>
+              <input
+                id="filter-date-from"
+                type="date"
+                value={state.filters.dateRangeFrom}
+                onChange={(e) =>
+                  dispatch({
+                    type: 'SET_FILTERS',
+                    filters: { dateRangeFrom: e.target.value },
+                  })
+                }
+                className="h-8 px-2 text-xs text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-700"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="filter-date-to" className="text-slate-500">
+                To:
+              </label>
+              <input
+                id="filter-date-to"
+                type="date"
+                value={state.filters.dateRangeTo}
+                onChange={(e) =>
+                  dispatch({
+                    type: 'SET_FILTERS',
+                    filters: { dateRangeTo: e.target.value },
+                  })
+                }
+                className="h-8 px-2 text-xs text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-700"
+              />
+            </div>
+            {(state.filters.minDurationFilter > 0 ||
+              state.filters.maxDurationFilter > 0 ||
+              state.filters.dateRangeFrom ||
+              state.filters.dateRangeTo ||
+              state.filters.sourceFilter !== 'all' ||
+              state.filters.channelFilter !== 'all' ||
+              state.filters.verificationFilter !== 'all' ||
+              state.filters.textFilter) && (
+              <button
+                type="button"
+                onClick={() => dispatch({ type: 'RESET_FILTERS' })}
+                className="text-xs font-medium text-blue-700 hover:underline min-h-[36px] flex items-center whitespace-nowrap"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
-          {(state.filters.minDurationFilter > 0 ||
-            state.filters.maxDurationFilter > 0 ||
-            state.filters.dateRangeFrom ||
-            state.filters.dateRangeTo ||
-            state.filters.sourceFilter !== 'all' ||
-            state.filters.channelFilter !== 'all' ||
-            state.filters.textFilter) && (
-            <button
-              type="button"
-              onClick={() => dispatch({ type: 'RESET_FILTERS' })}
-              className="ml-auto text-xs font-medium text-blue-700 hover:underline min-h-[36px] flex items-center"
-            >
-              Clear all filters
-            </button>
-          )}
         </div>
       </section>
 
@@ -747,6 +868,11 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
               const isPreparing = state.isPreparingOfferId === offer.id;
               const isDiscovering = state.isDiscoveringChannelsId === offer.id;
               const hasPreparedDossier = Boolean(state.dossiers[offer.id]);
+              const isUnverifiedExternal = isOfferExternallyUnverified(offer);
+              const verificationText = getVerificationLabel(offer);
+              const sourcesList =
+                offer.sources && offer.sources.length > 0 ? offer.sources : [offer.source];
+              const discoveredDate = (offer.discoveredAt ?? offer.collectedAt)?.slice(0, 10);
 
               return (
                 <article
@@ -760,7 +886,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
                         <span className="font-semibold text-slate-800">{offer.organization}</span>
                         <span aria-hidden="true">·</span>
-                        <span>{offer.source}</span>
+                        <span>{sourcesList.join(' + ')}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{getCollectionModeLabel(offer)}</span>
                         <span aria-hidden="true">·</span>
                         <span>{offer.location}</span>
                         <span aria-hidden="true">·</span>
@@ -779,11 +907,23 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                             </span>
                           </>
                         )}
-                        {getVerificationLabel(offer.verificationStatus) && (
+                        {discoveredDate && (
                           <>
                             <span aria-hidden="true">·</span>
-                            <span className="text-slate-700 font-medium">
-                              {getVerificationLabel(offer.verificationStatus)}
+                            <span className="tabular-nums font-mono">
+                              Seen {discoveredDate}
+                            </span>
+                          </>
+                        )}
+                        {verificationText && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span
+                              className={`font-medium ${
+                                isUnverifiedExternal ? 'text-amber-700' : 'text-emerald-700'
+                              }`}
+                            >
+                              {verificationText}
                             </span>
                           </>
                         )}
@@ -798,32 +938,51 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                         <span aria-hidden="true">·</span>
                         <span
                           className={`font-medium ${
-                            offer.status === ApplicationStatus.Sent
-                              ? 'text-emerald-700'
-                              : offer.status === ApplicationStatus.Ready
-                                ? 'text-blue-700'
-                                : 'text-slate-600'
+                            isUnverifiedExternal
+                              ? 'text-amber-700'
+                              : offer.status === ApplicationStatus.Sent
+                                ? 'text-emerald-700'
+                                : offer.status === ApplicationStatus.Ready
+                                  ? 'text-blue-700'
+                                  : 'text-slate-600'
                           }`}
                         >
-                          {getStatusLabel(offer.status)}
+                          {getStatusLabel(offer.status, isUnverifiedExternal)}
                         </span>
                       </div>
 
                       <h2 className="font-display text-base sm:text-lg font-semibold text-slate-900">
-                        {offer.title}
+                        <a
+                          href={offer.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:text-blue-700 hover:underline inline-flex items-center gap-1.5"
+                        >
+                          <span>{offer.title}</span>
+                          <ExternalLink className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                        </a>
                       </h2>
 
                       <p className="text-sm text-slate-600 leading-relaxed max-w-3xl">
                         {offer.description}
                       </p>
 
-                      {/* Matched CV Skills & Channel line (clean unboxed text) */}
-                      <div className="pt-1 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-slate-600">
+                      {/* Matched CV Skills & Channel / Provenance line (clean unboxed text) */}
+                      <div className="pt-1 flex flex-col sm:flex-row sm:items-center flex-wrap gap-2 sm:gap-4 text-xs text-slate-600">
                         <div>
                           <span className="font-medium text-slate-800">CV Match:</span>{' '}
                           <span>{matchedSkills.join(' · ')}</span>
                         </div>
-                        {preferredChannel && (
+                        <a
+                          href={offer.sourceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-blue-700 hover:underline font-medium"
+                        >
+                          <span>Open original listing</span>
+                          <ExternalLink className="w-3 h-3 shrink-0" aria-hidden="true" />
+                        </a>
+                        {!isUnverifiedExternal && preferredChannel && (
                           <div className="flex items-center gap-1.5 min-w-0">
                             {preferredChannel.type === ChannelType.Email ? (
                               <Mail className="w-3.5 h-3.5 text-blue-700 shrink-0" aria-hidden="true" />
@@ -843,31 +1002,56 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
 
                     {/* Action Controls */}
                     <div className="flex flex-wrap sm:flex-nowrap lg:flex-col items-stretch sm:items-center lg:items-end gap-2 shrink-0">
-                      <button
-                        type="button"
-                        disabled={isPreparing}
-                        onClick={() => void handlePrepareAndOpen(offer)}
-                        className="min-h-[44px] sm:min-h-[38px] px-4 py-2 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap"
-                      >
-                        <span>
-                          {isPreparing
-                            ? 'Adapting Letter...'
-                            : hasPreparedDossier
-                              ? 'Review & Send'
-                              : 'Prepare Letter & CV'}
-                        </span>
-                        <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
-                      </button>
+                      {isUnverifiedExternal ? (
+                        <>
+                          <a
+                            href={offer.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="min-h-[44px] sm:min-h-[38px] px-4 py-2 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors whitespace-nowrap"
+                          >
+                            <span>Open External Board</span>
+                            <ExternalLink className="w-3.5 h-3.5" aria-hidden="true" />
+                          </a>
+                          <button
+                            type="button"
+                            disabled={isPreparing}
+                            onClick={() => void handlePrepareAndOpen(offer)}
+                            className="min-h-[44px] sm:min-h-[36px] px-3 py-1.5 inline-flex items-center justify-center gap-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap"
+                          >
+                            <span>{isPreparing ? 'Drafting...' : 'Draft Notes (Unverified)'}</span>
+                            <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            disabled={isPreparing}
+                            onClick={() => void handlePrepareAndOpen(offer)}
+                            className="min-h-[44px] sm:min-h-[38px] px-4 py-2 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap"
+                          >
+                            <span>
+                              {isPreparing
+                                ? 'Adapting Letter...'
+                                : hasPreparedDossier
+                                  ? 'Review & Send'
+                                  : 'Prepare Letter & CV'}
+                            </span>
+                            <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
+                          </button>
 
-                      <button
-                        type="button"
-                        disabled={isDiscovering}
-                        onClick={() => void discoverChannelsForOffer(offer)}
-                        className="min-h-[44px] sm:min-h-[36px] px-3 py-1.5 inline-flex items-center justify-center gap-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap"
-                      >
-                        <Search className="w-3.5 h-3.5" aria-hidden="true" />
-                        {isDiscovering ? 'Scanning...' : 'Find Email / Form'}
-                      </button>
+                          <button
+                            type="button"
+                            disabled={isDiscovering}
+                            onClick={() => void discoverChannelsForOffer(offer)}
+                            className="min-h-[44px] sm:min-h-[36px] px-3 py-1.5 inline-flex items-center justify-center gap-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap"
+                          >
+                            <Search className="w-3.5 h-3.5" aria-hidden="true" />
+                            {isDiscovering ? 'Scanning...' : 'Find Email / Form'}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </article>

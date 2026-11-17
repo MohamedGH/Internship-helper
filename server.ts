@@ -7,6 +7,7 @@ import {
   prepareDossierWithGemini,
 } from './server/geminiService.ts';
 import { discoverChannelsFromUrl } from './server/search/channelScraper.ts';
+import { getJobBoardPolicySnapshots } from './server/search/jobboards/jobBoardSearch.ts';
 import { runScrapingSearch } from './server/search/scraperEngine.ts';
 import type { CustomSourceInput } from './server/search/types.ts';
 
@@ -21,6 +22,10 @@ const startServer = async () => {
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, service: 'stagepilot-api' });
+  });
+
+  app.get('/api/sources/registry', (_req, res) => {
+    res.json({ jobBoards: getJobBoardPolicySnapshots() });
   });
 
   app.post('/api/search', async (req, res) => {
@@ -52,10 +57,28 @@ const startServer = async () => {
         startDateFrom: typeof body.startDateFrom === 'string' ? body.startDateFrom : undefined,
         startDateTo: typeof body.startDateTo === 'string' ? body.startDateTo : undefined,
         workMode: typeof body.workMode === 'string' ? body.workMode : 'all',
+        educationLevel:
+          typeof body.educationLevel === 'string' ? body.educationLevel : undefined,
+        languages: Array.isArray(body.languages) ? body.languages.map(String) : undefined,
+        experienceLevel:
+          typeof body.experienceLevel === 'string' ? body.experienceLevel : undefined,
+        includeExternalDiscovery:
+          typeof body.includeExternalDiscovery === 'boolean'
+            ? body.includeExternalDiscovery
+            : true,
         sources:
           Array.isArray(body.sources) && body.sources.length > 0
             ? body.sources.map(String)
-            : ['Company Career Page', 'LinkedIn', 'Indeed', 'Welcome to the Jungle'],
+            : [
+                'Company Career Page',
+                'Meteojob',
+                'HelloWork',
+                'Welcome to the Jungle',
+                'France Travail',
+                'Apec',
+                'Remotive',
+                'We Work Remotely',
+              ],
         customSources,
       });
 

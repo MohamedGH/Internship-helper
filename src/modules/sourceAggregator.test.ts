@@ -91,6 +91,10 @@ test('mapRawSourceName accurately matches custom source names', () => {
   assert.equal(mapRawSourceName('Station F Jobs', customSources), 'Station F Jobs');
   assert.equal(mapRawSourceName('station f startup portal', customSources), 'Station F Jobs');
   assert.equal(mapRawSourceName('Indeed France', customSources), SourceProvider.Indeed);
+  assert.equal(mapRawSourceName('Meteojob France', customSources), SourceProvider.Meteojob);
+  assert.equal(mapRawSourceName('Apec Cadres', customSources), SourceProvider.Apec);
+  assert.equal(mapRawSourceName('France Travail Offres', customSources), SourceProvider.FranceTravail);
+  assert.equal(mapRawSourceName('Remotive Remote', customSources), SourceProvider.Remotive);
   assert.equal(mapRawSourceName('Unknown Job Portal', customSources), 'Unknown Job Portal');
 });
 
@@ -145,12 +149,13 @@ test('deduplicateOffers preserves existing offers and prepends only unique new o
   assert.equal(merged[0].organization, 'OrgGamma');
 });
 
-test('filterOffers filters by source, channel type, text query, duration, and date range', () => {
+test('filterOffers filters by source, channel type, verification level, text query, duration, and date range', () => {
   const sampleSet = buildOffersSet();
 
   const bySource = filterOffers(sampleSet, {
     sourceFilter: SourceProvider.WelcomeToTheJungle,
     channelFilter: 'all',
+    verificationFilter: 'all',
     minDurationFilter: 0,
     maxDurationFilter: 0,
     dateRangeFrom: '',
@@ -163,6 +168,7 @@ test('filterOffers filters by source, channel type, text query, duration, and da
   const byEmailAndText = filterOffers(sampleSet, {
     sourceFilter: 'all',
     channelFilter: ChannelType.Email,
+    verificationFilter: 'all',
     minDurationFilter: 0,
     maxDurationFilter: 0,
     dateRangeFrom: '',
@@ -175,6 +181,7 @@ test('filterOffers filters by source, channel type, text query, duration, and da
   const byDuration = filterOffers(sampleSet, {
     sourceFilter: 'all',
     channelFilter: 'all',
+    verificationFilter: 'all',
     minDurationFilter: 4,
     maxDurationFilter: 4,
     dateRangeFrom: '',
@@ -187,6 +194,7 @@ test('filterOffers filters by source, channel type, text query, duration, and da
   const byDateRange = filterOffers(sampleSet, {
     sourceFilter: 'all',
     channelFilter: 'all',
+    verificationFilter: 'all',
     minDurationFilter: 0,
     maxDurationFilter: 0,
     dateRangeFrom: '2027-05-01',
@@ -195,6 +203,48 @@ test('filterOffers filters by source, channel type, text query, duration, and da
   });
   assert.equal(byDateRange.length, 1);
   assert.equal(byDateRange[0].organization, 'Company B');
+
+  const unverifiedExternal = normalizeOffer(
+    {
+      id: 'o_ext',
+      title: 'Stage Node.js',
+      organization: 'StartupExt',
+      source: 'Meteojob',
+      sourceUrl: 'https://www.meteojob.com/job/123',
+      applicationEmail: 'should-strip@startupext.example',
+      collectionMode: 'discovered',
+      verificationLevel: 'externally_unverified',
+      verificationStatus: 'externally_unverified',
+    },
+    2
+  );
+  assert.equal(unverifiedExternal.channels.length, 0);
+
+  const mixedSet = [...sampleSet, unverifiedExternal];
+  const onlyDiscovered = filterOffers(mixedSet, {
+    sourceFilter: 'all',
+    channelFilter: 'all',
+    verificationFilter: 'discovered',
+    minDurationFilter: 0,
+    maxDurationFilter: 0,
+    dateRangeFrom: '',
+    dateRangeTo: '',
+    textFilter: '',
+  });
+  assert.equal(onlyDiscovered.length, 1);
+  assert.equal(onlyDiscovered[0].organization, 'StartupExt');
+
+  const onlyCollected = filterOffers(mixedSet, {
+    sourceFilter: 'all',
+    channelFilter: 'all',
+    verificationFilter: 'collected',
+    minDurationFilter: 0,
+    maxDurationFilter: 0,
+    dateRangeFrom: '',
+    dateRangeTo: '',
+    textFilter: '',
+  });
+  assert.equal(onlyCollected.length, 2);
 });
 
 test('validateSearchQuery rejects empty keywords, zero sources, and invalid duration or date ranges', () => {

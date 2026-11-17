@@ -59,7 +59,7 @@ test('validateCustomSource rejects short names, duplicate names, and invalid URL
 
   // Missing protocol
   const protocolCheck = validateCustomSource(
-    { name: 'Meteojob', baseUrl: 'meteojob.com/stages' },
+    { name: 'StageFrance Portal', baseUrl: 'stagefrance.example/stages' },
     existing
   );
   assert.equal(protocolCheck.valid, false);
@@ -67,7 +67,7 @@ test('validateCustomSource rejects short names, duplicate names, and invalid URL
 
   // Valid
   const validCheck = validateCustomSource(
-    { name: 'Meteojob', baseUrl: 'https://www.meteojob.com/stages' },
+    { name: 'StageFrance Portal', baseUrl: 'https://www.stagefrance.example/stages' },
     existing
   );
   assert.equal(validCheck.valid, true);
@@ -75,13 +75,13 @@ test('validateCustomSource rejects short names, duplicate names, and invalid URL
 
 test('addCustomSource appends unique source and avoids duplicate entries', () => {
   const custom = createCustomSource({
-    name: 'Meteojob',
-    baseUrl: 'https://www.meteojob.com',
+    name: 'StageFrance Portal',
+    baseUrl: 'https://www.stagefrance.example',
   });
 
   const updated = addCustomSource(DEFAULT_BUILTIN_SOURCES, custom);
   assert.equal(updated.length, DEFAULT_BUILTIN_SOURCES.length + 1);
-  assert.equal(updated[updated.length - 1].name, 'Meteojob');
+  assert.equal(updated[updated.length - 1].name, 'StageFrance Portal');
 
   // Attempting duplicate addition produces unchanged list
   const again = addCustomSource(updated, custom);

@@ -38,6 +38,7 @@ import {
   buildDispatchBundle,
   DispatchBundle,
   evaluatePreFlightChecks,
+  isOfferExternallyUnverified,
 } from '../modules/oneClickDispatcher';
 
 interface DossierStudioViewProps {
@@ -257,10 +258,18 @@ export const DossierStudioView: React.FC<DossierStudioViewProps> = ({
           <span aria-hidden="true">·</span>
           <span
             className={`font-semibold ${
-              offer.status === ApplicationStatus.Sent ? 'text-emerald-700' : 'text-blue-700'
+              isOfferExternallyUnverified(offer)
+                ? 'text-amber-700'
+                : offer.status === ApplicationStatus.Sent
+                  ? 'text-emerald-700'
+                  : 'text-blue-700'
             }`}
           >
-            {offer.status === ApplicationStatus.Sent ? 'Sent' : 'Ready to review'}
+            {isOfferExternallyUnverified(offer)
+              ? 'Externally Unverified (Verify on original site)'
+              : offer.status === ApplicationStatus.Sent
+                ? 'Sent'
+                : 'Ready to review'}
           </span>
         </div>
 
@@ -479,18 +488,35 @@ export const DossierStudioView: React.FC<DossierStudioViewProps> = ({
               ))}
             </ul>
 
-            <button
-              type="button"
-              onClick={() => void handleSingleClickSend()}
-              className="w-full min-h-[48px] px-4 py-3 inline-flex items-center justify-center gap-2 text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-xl transition-colors"
-            >
-              <Send className="w-4 h-4" aria-hidden="true" />
-              {offer.status === ApplicationStatus.Sent
-                ? 'Send Again (Copy & Launch)'
-                : preFlight.selectedChannel?.type === ChannelType.Email
-                  ? 'Check & Send Email in 1 Click'
-                  : 'Check, Copy & Open Form in 1 Click'}
-            </button>
+            {isOfferExternallyUnverified(offer) ? (
+              <div className="space-y-2">
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  This listing was discovered via an external search link and was not scraped from the destination portal. Inspect it directly on {offer.source} before applying.
+                </p>
+                <a
+                  href={offer.sourceUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full min-h-[48px] px-4 py-3 inline-flex items-center justify-center gap-2 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors"
+                >
+                  <span>Open Original Listing on {offer.source}</span>
+                  <ExternalLink className="w-4 h-4" aria-hidden="true" />
+                </a>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void handleSingleClickSend()}
+                className="w-full min-h-[48px] px-4 py-3 inline-flex items-center justify-center gap-2 text-sm font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-xl transition-colors"
+              >
+                <Send className="w-4 h-4" aria-hidden="true" />
+                {offer.status === ApplicationStatus.Sent
+                  ? 'Send Again (Copy & Launch)'
+                  : preFlight.selectedChannel?.type === ChannelType.Email
+                    ? 'Check & Send Email in 1 Click'
+                    : 'Check, Copy & Open Form in 1 Click'}
+              </button>
+            )}
 
             {dispatchedBundle && (
               <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs space-y-2">

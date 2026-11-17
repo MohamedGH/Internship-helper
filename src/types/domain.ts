@@ -5,7 +5,38 @@ export enum SourceProvider {
   HelloWork = 'HelloWork',
   JobTeaser = 'JobTeaser',
   CompanyCareer = 'Company Career Page',
+  Meteojob = 'Meteojob',
+  Apec = 'Apec',
+  FranceTravail = 'France Travail',
+  Remotive = 'Remotive',
+  WeWorkRemotely = 'We Work Remotely',
 }
+
+export type JobBoardAccessMode =
+  | 'official_api'
+  | 'rss_feed'
+  | 'authorized_html'
+  | 'search_index'
+  | 'link_only'
+  | 'disabled'
+  | 'ats_api'
+  | 'custom_html';
+
+export type CollectionMode = 'collected' | 'discovered';
+
+export type VerificationLevel =
+  | 'verified'
+  | 'collected'
+  | 'discovered'
+  | 'externally_unverified'
+  | 'expired';
+
+export type VerificationFilter =
+  | 'all'
+  | 'collected'
+  | 'discovered'
+  | 'verified'
+  | 'externally_unverified';
 
 export enum WorkMode {
   OnSite = 'On-site',
@@ -88,6 +119,8 @@ export interface CustomSource {
   readonly cssSelectors?: CustomSourceSelectors;
   readonly collectFrequencyMinutes?: number;
   readonly usePlaywright?: boolean;
+  readonly accessMode?: JobBoardAccessMode;
+  readonly policySummary?: string;
   readonly enabled: boolean;
   readonly isDefault: boolean;
   readonly createdAt: string;
@@ -99,10 +132,16 @@ export type OfferVerificationStatus =
   | 'verified_ats_api'
   | 'verified_offer'
   | 'generic_career_page'
-  | 'unverified_url';
+  | 'unverified_url'
+  | 'collected'
+  | 'discovered'
+  | 'externally_unverified'
+  | 'verified'
+  | 'expired';
 
 export interface InternshipOffer {
   readonly id: string;
+  readonly externalId?: string | null;
   readonly title: string;
   readonly organization: string;
   readonly organizationSummary: string;
@@ -114,11 +153,20 @@ export interface InternshipOffer {
   readonly startDate: string | null;
   readonly endDate: string | null;
   readonly source: SourceIdentifier;
+  readonly sources?: readonly string[];
   readonly sourceUrl: string;
+  readonly alternateUrls?: readonly string[];
   readonly applicationUrl?: string | null;
   readonly postedDate: string | null;
   readonly collectedAt?: string;
+  readonly discoveredAt?: string;
+  readonly collectionMode?: CollectionMode;
+  readonly accessMode?: JobBoardAccessMode;
   readonly verificationStatus?: OfferVerificationStatus;
+  readonly verificationLevel?: VerificationLevel;
+  readonly educationLevel?: string | null;
+  readonly experienceLevel?: string | null;
+  readonly languages?: readonly string[];
   readonly matchScore?: number;
   readonly description: string;
   readonly requirements: readonly string[];
@@ -153,6 +201,10 @@ export interface SearchQuery {
   readonly startDateFrom: string;
   readonly startDateTo: string;
   readonly workMode: WorkMode | 'all';
+  readonly educationLevel?: string;
+  readonly languages?: readonly string[];
+  readonly experienceLevel?: string;
+  readonly includeExternalDiscovery?: boolean;
   readonly sources: readonly string[];
 }
 
@@ -161,12 +213,14 @@ export interface ExternalSearchLink {
   readonly label: string;
   readonly url: string;
   readonly reason: string;
+  readonly accessMode?: JobBoardAccessMode;
 }
 
 export interface SourceCollectionLog {
   readonly source: string;
   readonly connector: string;
-  readonly status: 'ok' | 'cached' | 'disabled_policy' | 'robots_blocked' | 'error';
+  readonly accessMode?: JobBoardAccessMode;
+  readonly status: 'ok' | 'cached' | 'disabled_policy' | 'robots_blocked' | 'link_only' | 'error';
   readonly collectedCount: number;
   readonly matchedCount: number;
   readonly durationMs: number;
@@ -196,6 +250,7 @@ export type AppRoute =
 export interface FilterState {
   readonly sourceFilter: string | 'all';
   readonly channelFilter: ChannelType | 'all';
+  readonly verificationFilter: VerificationFilter;
   readonly textFilter: string;
   readonly minDurationFilter: number;
   readonly maxDurationFilter: number;

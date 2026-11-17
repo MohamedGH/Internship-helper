@@ -29,6 +29,13 @@ export interface DispatchBundle {
   readonly clipboardText: string;
 }
 
+export const isOfferExternallyUnverified = (offer: InternshipOffer): boolean =>
+  offer.verificationLevel === 'externally_unverified' ||
+  offer.verificationStatus === 'externally_unverified' ||
+  offer.verificationStatus === 'unverified_url' ||
+  offer.verificationLevel === 'expired' ||
+  offer.verificationStatus === 'expired';
+
 export const evaluatePreFlightChecks = (
   offer: InternshipOffer,
   profile: CandidateProfile,
@@ -37,6 +44,9 @@ export const evaluatePreFlightChecks = (
   const selectedChannel = selectPreferredChannel(offer.channels, dossier?.selectedChannelId);
   const channelStatus = verifyChannelReadiness(selectedChannel);
 
+  const isExpired =
+    offer.verificationLevel === 'expired' || offer.verificationStatus === 'expired';
+  const isOfferVerified = !isOfferExternallyUnverified(offer);
   const hasProfile =
     profile.fullName.trim().length > 1 && profile.email.trim().includes('@');
   const hasLetter = Boolean(dossier && dossier.coverLetter.trim().length >= 80);
@@ -44,6 +54,16 @@ export const evaluatePreFlightChecks = (
   const hasCvHighlights = Boolean(dossier && dossier.cvTailoringHighlights.length > 0);
 
   const checks: PreFlightCheckItem[] = [
+    {
+      id: 'offer_verified',
+      label: 'Offer Verification & Legality',
+      passed: isOfferVerified,
+      detail: isOfferVerified
+        ? 'Verified or legally collected listing'
+        : isExpired
+          ? 'This listing is expired and cannot be dispatched.'
+          : 'Unverified external discovery link — inspect original job board before applying.',
+    },
     {
       id: 'cv_profile',
       label: 'Candidate CV & Contact Info',

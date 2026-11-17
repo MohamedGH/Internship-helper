@@ -108,6 +108,7 @@ export const createInitialState = (
   filters: {
     sourceFilter: 'all',
     channelFilter: 'all',
+    verificationFilter: 'all',
     textFilter: '',
     minDurationFilter: 0,
     maxDurationFilter: 0,
@@ -159,6 +160,7 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
         filters: {
           sourceFilter: 'all',
           channelFilter: 'all',
+          verificationFilter: 'all',
           textFilter: '',
           minDurationFilter: 0,
           maxDurationFilter: 0,
@@ -275,11 +277,19 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
       };
 
     case 'PREPARE_SUCCEEDED': {
-      const updatedOffers = state.offers.map((offer) =>
-        offer.id === action.offerId && offer.status === ApplicationStatus.Discovered
-          ? { ...offer, status: ApplicationStatus.Ready }
-          : offer
-      );
+      const updatedOffers = state.offers.map((offer) => {
+        if (offer.id !== action.offerId || offer.status !== ApplicationStatus.Discovered) {
+          return offer;
+        }
+        const isUnverifiedExternal =
+          offer.verificationLevel === 'externally_unverified' ||
+          offer.verificationStatus === 'externally_unverified' ||
+          offer.verificationStatus === 'unverified_url';
+        return {
+          ...offer,
+          status: isUnverifiedExternal ? ApplicationStatus.Drafting : ApplicationStatus.Ready,
+        };
+      });
       return {
         ...state,
         isPreparingOfferId: null,
@@ -308,11 +318,19 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
         ...action.patch,
         updatedAt: new Date().toISOString(),
       };
-      const updatedOffers = state.offers.map((offer) =>
-        offer.id === action.offerId && offer.status === ApplicationStatus.Discovered
-          ? { ...offer, status: ApplicationStatus.Ready }
-          : offer
-      );
+      const updatedOffers = state.offers.map((offer) => {
+        if (offer.id !== action.offerId || offer.status !== ApplicationStatus.Discovered) {
+          return offer;
+        }
+        const isUnverifiedExternal =
+          offer.verificationLevel === 'externally_unverified' ||
+          offer.verificationStatus === 'externally_unverified' ||
+          offer.verificationStatus === 'unverified_url';
+        return {
+          ...offer,
+          status: isUnverifiedExternal ? ApplicationStatus.Drafting : ApplicationStatus.Ready,
+        };
+      });
       return {
         ...state,
         offers: updatedOffers,
@@ -462,6 +480,8 @@ export const selectReadyQueue = (state: AppState): readonly InternshipOffer[] =>
   state.offers.filter(
     (offer) =>
       (offer.status === ApplicationStatus.Ready || offer.status === ApplicationStatus.Drafting) &&
+      offer.verificationLevel !== 'externally_unverified' &&
+      offer.verificationStatus !== 'externally_unverified' &&
       Boolean(state.dossiers[offer.id])
   );
 
@@ -477,13 +497,18 @@ export const selectTrackedApplications = (state: AppState): readonly InternshipO
 export const selectPipelineCounts = (state: AppState) => {
   const discovered = state.offers.length;
   const ready = state.offers.filter(
-    (o) => o.status === ApplicationStatus.Ready && Boolean(state.dossiers[o.id])
+    (o) =>
+      o.status === ApplicationStatus.Ready &&
+      o.verificationLevel !== 'externally_unverified' &&
+      Boolean(state.dossiers[o.id])
   ).length;
   const sent = state.offers.filter(
     (o) => o.status === ApplicationStatus.Sent || o.status === ApplicationStatus.Interview
   ).length;
-  const channelsVerified = state.offers.filter((o) =>
-    o.channels.some((c) => c.verified)
+  const channelsVerified = state.offers.filter(
+    (o) =>
+      o.verificationLevel !== 'externally_unverified' &&
+      o.channels.some((c) => c.verified)
   ).length;
 
   return { discovered, ready, sent, channelsVerified };
@@ -509,14 +534,29 @@ export const hydratePersistedState = (raw: string | null): AppState => {
     const parsed = JSON.parse(raw) as Partial<
       Pick<AppState, 'profile' | 'searchQuery' | 'customSources' | 'offers' | 'dossiers'>
     >;
+    const savedSources =
+      Array.isArray(parsed.customSources) && parsed.customSources.length > 0
+        ? parsed.customSources
+        : [];
+    const existingIds = new Set(savedSources.map((s) => s.id));
+    const mergedSources =
+      savedSources.length > 0
+        ? [
+            ...savedSources.map((saved) => {
+              const builtin = base.customSources.find((b) => b.id === saved.id);
+              return builtin
+                ? { ...builtin, enabled: saved.enabled }
+                : saved;
+            }),
+            ...base.customSources.filter((b) => !existingIds.has(b.id)),
+          ]
+        : base.customSources;
+
     return {
       ...base,
       profile: parsed.profile && typeof parsed.profile === 'object' ? parsed.profile : base.profile,
       searchQuery: parsed.searchQuery?.keywords ? parsed.searchQuery : base.searchQuery,
-      customSources:
-        Array.isArray(parsed.customSources) && parsed.customSources.length > 0
-          ? parsed.customSources
-          : base.customSources,
+      customSources: mergedSources,
       offers: Array.isArray(parsed.offers) ? parsed.offers : base.offers,
       dossiers: parsed.dossiers && typeof parsed.dossiers === 'object' ? parsed.dossiers : base.dossiers,
     };

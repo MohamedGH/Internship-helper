@@ -1,5 +1,7 @@
 import { filterAndScoreOffers } from './filters/criteriaMatcher.ts';
 import { deduplicateScrapedOffers } from './filters/deduplicator.ts';
+import { getJobBoardPolicySnapshots } from './jobboards/jobBoardSearch.ts';
+import { WebSearchDiscoveryProvider } from './jobboards/searchDiscoveryProvider.ts';
 import { normalizeScrapedOffer } from './normalizer.ts';
 import { resolveConnectorsForCriteria } from './scraperRegistry.ts';
 import {
@@ -18,6 +20,8 @@ export interface EngineRunOptions {
   readonly connectorTimeoutMs?: number;
   readonly connectorsOverride?: readonly ScraperConnector[];
   readonly fetchFn?: typeof fetch;
+  readonly discoveryProvider?: WebSearchDiscoveryProvider | null;
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 const runWithConcurrency = async <T, R>(
@@ -58,6 +62,7 @@ const runConnectorSafely = async (
       connector: res.connector,
       detail: {
         status: res.status,
+        accessMode: res.accessMode,
         collectedCount: res.offers.length,
         durationMs: res.durationMs,
         message: res.message,
@@ -95,7 +100,11 @@ export const runScrapingSearch = async (
 
   const connectors =
     options.connectorsOverride ??
-    resolveConnectorsForCriteria(criteria, { fetchFn: options.fetchFn });
+    resolveConnectorsForCriteria(criteria, {
+      fetchFn: options.fetchFn,
+      discoveryProvider: options.discoveryProvider,
+      env: options.env,
+    });
 
   const executionResults = await runWithConcurrency(
     connectors,
@@ -120,15 +129,18 @@ export const runScrapingSearch = async (
   const deduplicated = deduplicateScrapedOffers(normalizedOffers);
   const filtered = filterAndScoreOffers(deduplicated, criteria);
 
-  // Build per-connector logs including how many offers survived final matching
+  // Build per-connector logs including multi-source deduplicated offers
   const matchedBySource = new Map<string, number>();
   for (const offer of filtered) {
-    matchedBySource.set(offer.source, (matchedBySource.get(offer.source) ?? 0) + 1);
+    for (const src of offer.sources) {
+      matchedBySource.set(src, (matchedBySource.get(src) ?? 0) + 1);
+    }
   }
 
   const sourceLogs: SourceCollectionLog[] = executionResults.map((res) => ({
     source: res.source,
     connector: res.connector,
+    accessMode: res.accessMode,
     status: res.status,
     collectedCount: res.offers.length,
     matchedCount: matchedBySource.get(res.source) ?? 0,
@@ -148,7 +160,10 @@ export const runScrapingSearch = async (
     }
   }
 
+  const collectedCount = filtered.filter((o) => o.collectionMode === 'collected').length;
+  const discoveredCount = filtered.filter((o) => o.collectionMode === 'discovered').length;
   const totalDurationMs = Date.now() - engineStart;
+
   logScrapeEvent({
     level: 'info',
     event: 'search_engine_completed',
@@ -157,6 +172,8 @@ export const runScrapingSearch = async (
       totalCollected: normalizedOffers.length,
       afterDeduplication: deduplicated.length,
       afterFiltering: filtered.length,
+      collectedCount,
+      discoveredCount,
       durationMs: totalDurationMs,
     },
   });
@@ -166,10 +183,13 @@ export const runScrapingSearch = async (
     groundingUrls,
     externalSearchLinks,
     sourceLogs,
+    jobBoardPolicies: getJobBoardPolicySnapshots(options.env),
     stats: {
       totalCollected: normalizedOffers.length,
       afterDeduplication: deduplicated.length,
       afterFiltering: filtered.length,
+      collectedCount,
+      discoveredCount,
       durationMs: totalDurationMs,
     },
   };

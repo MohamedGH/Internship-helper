@@ -176,9 +176,11 @@ test('scraperRegistry keeps LinkedIn and Indeed disabled by policy with official
   assert.equal(connectors[1].policyDisabled, true);
 
   const results = await Promise.all(connectors.map((c) => c.collect(criteria)));
-  assert.equal(results[0].status, 'disabled_policy');
+  assert.equal(results[0].status, 'link_only');
+  assert.equal(results[0].accessMode, 'link_only');
   assert.ok(results[0].externalSearchLinks[0].url.includes('linkedin.com/jobs/search'));
-  assert.equal(results[1].status, 'disabled_policy');
+  assert.equal(results[1].status, 'link_only');
+  assert.equal(results[1].accessMode, 'link_only');
   assert.ok(results[1].externalSearchLinks[0].url.includes('indeed.com/jobs'));
 });
 

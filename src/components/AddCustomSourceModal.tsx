@@ -472,6 +472,49 @@ export const AddCustomSourceModal: React.FC<AddCustomSourceModalProps> = ({
             </form>
           </section>
 
+          {/* Built-in JobBoards & ATS Providers */}
+          <section aria-labelledby="builtin-sources-heading" className="pt-2 border-t border-slate-100">
+            <h3 id="builtin-sources-heading" className="text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">
+              Built-in ATS &amp; JobBoard Providers ({customSources.filter((s) => s.isDefault).length})
+            </h3>
+            <ul className="space-y-2 mb-5">
+              {customSources
+                .filter((s) => s.isDefault)
+                .map((source) => (
+                  <li
+                    key={source.id}
+                    className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-slate-900">{source.name}</span>
+                        <span className="font-mono text-[11px] text-slate-500">
+                          {source.accessMode ?? 'link_only'}
+                        </span>
+                      </div>
+                      {(source.policySummary || source.description) && (
+                        <p className="text-[11px] text-slate-600 mt-0.5">
+                          {source.policySummary ?? source.description}
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => onToggleSource(source.id)}
+                      className={`h-7 px-2.5 rounded text-[11px] font-medium transition-colors shrink-0 ${
+                        source.enabled
+                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                          : 'bg-white text-slate-500 border border-slate-200'
+                      }`}
+                    >
+                      {source.enabled ? 'Enabled' : 'Disabled'}
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          </section>
+
           {/* User Custom Sources List */}
           <section aria-labelledby="active-sources-heading" className="pt-2 border-t border-slate-100">
             <h3 id="active-sources-heading" className="text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">

@@ -99,6 +99,40 @@ export const normalizeWorkMode = (
   return 'On-site';
 };
 
+const extractLanguagesFromCorpus = (
+  explicit: readonly string[] | undefined,
+  corpus: string
+): readonly string[] => {
+  const langs = new Set<string>((explicit ?? []).map((l) => l.trim()).filter(Boolean));
+  if (/\b(français|french|francophone)\b/i.test(corpus)) langs.add('French');
+  if (/\b(anglais|english|fluent english|bilingual)\b/i.test(corpus)) langs.add('English');
+  return Array.from(langs);
+};
+
+const extractEducationLevel = (
+  explicit: string | null | undefined,
+  corpus: string
+): string | null => {
+  if (explicit?.trim()) return explicit.trim();
+  const match = corpus.match(/\b(bac\s*\+\s*[2-5]|master\s*[12]?|m[12]\b|miage|licence|bachelor|ingénieur|engineering student)\b/i);
+  return match ? match[0].trim() : null;
+};
+
+const extractExperienceLevel = (
+  explicit: string | null | undefined,
+  corpus: string
+): string | null => {
+  if (explicit?.trim()) return explicit.trim();
+  if (/\b(sans expérience|no experience|débutant|junior|intern|stage)\b/i.test(corpus)) {
+    return 'Junior / Internship';
+  }
+  const yearsMatch = corpus.match(/\b([3-9]|1\d)\s*\+?\s*(?:ans d['’]expérience|years? of experience)\b/i);
+  if (yearsMatch) {
+    return `${yearsMatch[1]}+ years`;
+  }
+  return null;
+};
+
 const normalizeDateIso = (rawDate: string | null | undefined): string | null => {
   if (!rawDate) return null;
   const trimmed = rawDate.trim();
@@ -151,22 +185,43 @@ export const normalizeScrapedOffer = (
   const location = raw.location?.trim() || 'Unspecified';
   const workMode = normalizeWorkMode(raw.workMode, `${location} ${corpus}`);
   const skills = extractSkillsFromCorpus(raw.skills, corpus);
+  const languages = extractLanguagesFromCorpus(raw.languages, corpus);
+  const educationLevel = extractEducationLevel(raw.educationLevel, corpus);
+  const experienceLevel = extractExperienceLevel(raw.experienceLevel, corpus);
 
   const applicationUrl =
-    verification.normalizedApplicationUrl &&
-    verification.normalizedApplicationUrl !== verification.normalizedOriginalUrl
-      ? verification.normalizedApplicationUrl
-      : verification.normalizedApplicationUrl ?? null;
+    verification.collectionMode === 'discovered'
+      ? null
+      : verification.normalizedApplicationUrl &&
+          verification.normalizedApplicationUrl !== verification.normalizedOriginalUrl
+        ? verification.normalizedApplicationUrl
+        : verification.normalizedApplicationUrl ?? null;
+
+  const accessMode =
+    raw.accessMode ??
+    (raw.isAtsApi
+      ? 'ats_api'
+      : raw.isAuthorizedApi
+        ? 'official_api'
+        : raw.isRssFeed
+          ? 'rss_feed'
+          : raw.isExternalDiscovery
+            ? 'search_index'
+            : 'custom_html');
+
+  const summaryFallback =
+    verification.collectionMode === 'discovered'
+      ? `${organization} — discovered via ${raw.source} external search link (unverified on source portal).`
+      : `${organization} — ${raw.source} verified career listing.`;
 
   return {
     id: buildDeterministicOfferId(raw, verification.normalizedOriginalUrl),
+    externalId: raw.externalId?.trim() || null,
     title,
     organization,
-    organizationSummary:
-      raw.organizationSummary?.trim() ||
-      `${organization} — ${raw.source} verified career listing.`,
+    organizationSummary: raw.organizationSummary?.trim() || summaryFallback,
     description:
-      description || `${title} at ${organization} (collected from ${raw.source}).`,
+      description || `${title} at ${organization} (source: ${raw.source}).`,
     location,
     workMode,
     contractType,
@@ -175,15 +230,25 @@ export const normalizeScrapedOffer = (
     postedDate: normalizeDateIso(raw.postedDate),
     startDate: normalizeDateIso(raw.startDate),
     endDate: normalizeDateIso(raw.endDate),
+    expiresAt: normalizeDateIso(raw.expiresAt),
     requirements: skills,
+    languages,
+    educationLevel,
+    experienceLevel,
     source: raw.source,
+    sources: [raw.source],
     sourceUrl: verification.normalizedOriginalUrl,
+    alternateUrls: [],
     applicationUrl,
     applicationEmail: verification.normalizedEmail,
     applicationFormUrl: applicationUrl,
     contactName: raw.contactName?.trim() || null,
     collectedAt,
+    discoveredAt: collectedAt,
+    collectionMode: verification.collectionMode,
+    accessMode,
     verificationStatus: verification.status,
+    verificationLevel: verification.verificationLevel,
     matchScore: 0,
   };
 };

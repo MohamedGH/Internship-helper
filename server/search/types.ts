@@ -2,7 +2,29 @@ export type VerificationStatus =
   | 'verified_ats_api'
   | 'verified_offer'
   | 'generic_career_page'
-  | 'unverified_url';
+  | 'unverified_url'
+  | 'collected'
+  | 'discovered'
+  | 'externally_unverified'
+  | 'verified'
+  | 'expired';
+
+export type JobBoardAccessMode =
+  | 'official_api'
+  | 'rss_feed'
+  | 'authorized_html'
+  | 'search_index'
+  | 'link_only'
+  | 'disabled';
+
+export type CollectionMode = 'collected' | 'discovered';
+
+export type VerificationLevel =
+  | 'verified'
+  | 'collected'
+  | 'discovered'
+  | 'externally_unverified'
+  | 'expired';
 
 export type WorkModeValue = 'On-site' | 'Hybrid' | 'Remote';
 
@@ -27,6 +49,7 @@ export interface CustomSourceInput {
   readonly cssSelectors?: CustomSourceSelectors;
   readonly collectFrequencyMinutes?: number;
   readonly usePlaywright?: boolean;
+  readonly accessMode?: JobBoardAccessMode | 'ats_api' | 'custom_html';
   readonly enabled: boolean;
   readonly isDefault?: boolean;
 }
@@ -42,6 +65,10 @@ export interface SearchCriteria {
   readonly startDateFrom?: string;
   readonly startDateTo?: string;
   readonly workMode: string;
+  readonly educationLevel?: string;
+  readonly languages?: readonly string[];
+  readonly experienceLevel?: string;
+  readonly includeExternalDiscovery?: boolean;
   readonly sources: readonly string[];
   readonly customSources?: readonly CustomSourceInput[];
   readonly includeUnspecifiedDuration?: boolean;
@@ -49,6 +76,7 @@ export interface SearchCriteria {
 }
 
 export interface RawScrapedOffer {
+  readonly externalId?: string | null;
   readonly title: string;
   readonly organization: string;
   readonly organizationSummary?: string | null;
@@ -60,7 +88,12 @@ export interface RawScrapedOffer {
   readonly postedDate?: string | null;
   readonly startDate?: string | null;
   readonly endDate?: string | null;
+  readonly expiresAt?: string | null;
+  readonly isExpired?: boolean;
   readonly skills?: readonly string[];
+  readonly languages?: readonly string[];
+  readonly educationLevel?: string | null;
+  readonly experienceLevel?: string | null;
   readonly description?: string | null;
   readonly originalUrl: string;
   readonly applicationUrl?: string | null;
@@ -68,10 +101,16 @@ export interface RawScrapedOffer {
   readonly contactName?: string | null;
   readonly source: string;
   readonly isAtsApi?: boolean;
+  readonly isAuthorizedApi?: boolean;
+  readonly isRssFeed?: boolean;
+  readonly isExternalDiscovery?: boolean;
+  readonly accessMode?: JobBoardAccessMode | 'ats_api' | 'custom_html';
+  readonly collectionMode?: CollectionMode;
 }
 
 export interface NormalizedScrapedOffer {
   readonly id: string;
+  readonly externalId: string | null;
   readonly title: string;
   readonly organization: string;
   readonly organizationSummary: string;
@@ -84,15 +123,25 @@ export interface NormalizedScrapedOffer {
   readonly postedDate: string | null;
   readonly startDate: string | null;
   readonly endDate: string | null;
+  readonly expiresAt: string | null;
   readonly requirements: readonly string[];
+  readonly languages: readonly string[];
+  readonly educationLevel: string | null;
+  readonly experienceLevel: string | null;
   readonly source: string;
+  readonly sources: readonly string[];
   readonly sourceUrl: string;
+  readonly alternateUrls: readonly string[];
   readonly applicationUrl: string | null;
   readonly applicationEmail: string | null;
   readonly applicationFormUrl: string | null;
   readonly contactName: string | null;
   readonly collectedAt: string;
+  readonly discoveredAt: string;
+  readonly collectionMode: CollectionMode;
+  readonly accessMode: JobBoardAccessMode | 'ats_api' | 'custom_html';
   readonly verificationStatus: VerificationStatus;
+  readonly verificationLevel: VerificationLevel;
   readonly matchScore: number;
 }
 
@@ -101,12 +150,14 @@ export interface ExternalSearchLink {
   readonly label: string;
   readonly url: string;
   readonly reason: string;
+  readonly accessMode?: JobBoardAccessMode;
 }
 
 export interface SourceCollectionLog {
   readonly source: string;
   readonly connector: string;
-  readonly status: 'ok' | 'cached' | 'disabled_policy' | 'robots_blocked' | 'error';
+  readonly accessMode?: JobBoardAccessMode | 'ats_api' | 'custom_html';
+  readonly status: 'ok' | 'cached' | 'disabled_policy' | 'robots_blocked' | 'link_only' | 'error';
   readonly collectedCount: number;
   readonly matchedCount: number;
   readonly durationMs: number;
@@ -116,6 +167,7 @@ export interface SourceCollectionLog {
 export interface ConnectorExecutionResult {
   readonly source: string;
   readonly connector: string;
+  readonly accessMode?: JobBoardAccessMode | 'ats_api' | 'custom_html';
   readonly status: SourceCollectionLog['status'];
   readonly offers: readonly RawScrapedOffer[];
   readonly externalSearchLinks: readonly ExternalSearchLink[];
@@ -132,15 +184,33 @@ export interface ScraperConnector {
   readonly collect: (criteria: SearchCriteria) => Promise<ConnectorExecutionResult>;
 }
 
+export interface JobBoardPolicySnapshot {
+  readonly id: string;
+  readonly name: string;
+  readonly siteUrl: string;
+  readonly tosUrl: string;
+  readonly robotsTxtUrl: string;
+  readonly accessMode: JobBoardAccessMode;
+  readonly authorizationStatus: string;
+  readonly lastTosCheckedAt: string;
+  readonly requiresWrittenAgreement: boolean;
+  readonly requiresApiCredentials: boolean;
+  readonly allowedFields: readonly string[];
+  readonly policySummary: string;
+}
+
 export interface ScrapingEngineResponse {
   readonly offers: readonly NormalizedScrapedOffer[];
   readonly groundingUrls: readonly { readonly title: string; readonly url: string }[];
   readonly externalSearchLinks: readonly ExternalSearchLink[];
   readonly sourceLogs: readonly SourceCollectionLog[];
+  readonly jobBoardPolicies?: readonly JobBoardPolicySnapshot[];
   readonly stats: {
     readonly totalCollected: number;
     readonly afterDeduplication: number;
     readonly afterFiltering: number;
+    readonly collectedCount: number;
+    readonly discoveredCount: number;
     readonly durationMs: number;
   };
 }

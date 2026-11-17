@@ -142,8 +142,37 @@ test('appReducer delegates errors to errorReducer and filters offers cleanly', (
   assert.equal(state.filters.dateRangeTo, '');
 });
 
+test('appReducer prevents externally_unverified offers from entering Ready queue', () => {
+  const unverifiedOffer = normalizeOffer(
+    {
+      id: 'ext_unverified_1',
+      title: 'Stage Fullstack Node',
+      organization: 'Meteojob Org',
+      location: 'Paris',
+      source: 'Meteojob',
+      sourceUrl: 'https://www.meteojob.com/jobs/123',
+      collectionMode: 'discovered',
+      verificationLevel: 'externally_unverified',
+      verificationStatus: 'externally_unverified',
+    },
+    0
+  );
+  let state = createInitialState(undefined, [unverifiedOffer]);
+  const dossier = buildPreparedDossier(unverifiedOffer, state.profile, 'fr', 'professional');
+
+  state = appReducer(state, {
+    type: 'PREPARE_SUCCEEDED',
+    offerId: unverifiedOffer.id,
+    dossier,
+  });
+
+  assert.equal(state.offers[0].status, ApplicationStatus.Drafting);
+  assert.equal(selectReadyQueue(state).length, 0);
+});
+
 test('serializePersistedState and hydratePersistedState round-trip cleanly including custom sources', () => {
   let state = createInitialState(undefined, buildTestOffers());
+  const baseSourceCount = state.customSources.length;
   state = appReducer(state, {
     type: 'SET_PROFILE',
     profile: { ...state.profile, fullName: 'Nadia Mansouri' },
@@ -160,15 +189,15 @@ test('serializePersistedState and hydratePersistedState round-trip cleanly inclu
   };
 
   state = appReducer(state, { type: 'ADD_CUSTOM_SOURCE', source: customSource });
-  assert.equal(state.customSources.length, 7);
+  assert.equal(state.customSources.length, baseSourceCount + 1);
   assert.ok(state.searchQuery.sources.includes('Polytech Career Portal'));
 
   const serialized = serializePersistedState(state);
   const hydrated = hydratePersistedState(serialized);
   assert.equal(hydrated.profile.fullName, 'Nadia Mansouri');
   assert.equal(hydrated.offers.length, state.offers.length);
-  assert.equal(hydrated.customSources.length, 7);
-  assert.equal(hydrated.customSources[6].name, 'Polytech Career Portal');
+  assert.equal(hydrated.customSources.length, baseSourceCount + 1);
+  assert.ok(hydrated.customSources.some((s) => s.name === 'Polytech Career Portal'));
 
   state = appReducer(state, { type: 'TOGGLE_CUSTOM_SOURCE', sourceId: 'custom_src_test_1' });
   const toggled = state.customSources.find((s) => s.id === 'custom_src_test_1');
@@ -184,10 +213,11 @@ test('serializePersistedState and hydratePersistedState round-trip cleanly inclu
   assert.equal(updated?.description, 'Updated portal description');
 
   state = appReducer(state, { type: 'REMOVE_CUSTOM_SOURCE', sourceId: 'custom_src_test_1' });
-  assert.equal(state.customSources.length, 6);
+  assert.equal(state.customSources.length, baseSourceCount);
   assert.ok(!state.customSources.some((s) => s.id === 'custom_src_test_1'));
 
   const fallback = hydratePersistedState('{not valid json');
   assert.equal(fallback.offers.length, createInitialState().offers.length);
   assert.equal(fallback.customSources.length, createInitialState().customSources.length);
 });
+
