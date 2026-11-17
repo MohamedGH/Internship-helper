@@ -8,8 +8,16 @@ export enum SourceProvider {
   Meteojob = 'Meteojob',
   Apec = 'Apec',
   FranceTravail = 'France Travail',
+  LesJeudis = 'LesJeudis',
+  AFJV = 'AFJV',
   Remotive = 'Remotive',
+  RemoteOK = 'Remote OK',
   WeWorkRemotely = 'We Work Remotely',
+  Arbeitnow = 'Arbeitnow',
+  Himalayas = 'Himalayas',
+  Jobicy = 'Jobicy',
+  Glassdoor = 'Glassdoor',
+  Wellfound = 'Wellfound',
 }
 
 export type JobBoardAccessMode =
@@ -108,8 +116,8 @@ export interface CandidateProfile {
 export interface ApplicationChannel {
   readonly id: string;
   readonly type: ChannelType;
-  readonly target: string; // email address or URL
-  readonly label: string; // e.g. "Recruiting Inbox", "Greenhouse Application Form"
+  readonly target: string;
+  readonly label: string;
   readonly channelRole?: ChannelRole;
   readonly contactName?: string;
   readonly verified: boolean;
@@ -190,6 +198,8 @@ export interface InternshipOffer {
   readonly experienceLevel?: string | null;
   readonly languages?: readonly string[];
   readonly matchScore?: number;
+  readonly matchReasons?: readonly string[];
+  readonly missions?: readonly string[];
   readonly description: string;
   readonly requirements: readonly string[];
   readonly channels: readonly ApplicationChannel[];
@@ -244,11 +254,22 @@ export interface ExternalSearchLink {
   readonly accessMode?: JobBoardAccessMode;
 }
 
+export type SourceRunStatus =
+  | 'ok'
+  | 'empty'
+  | 'cached'
+  | 'disabled_policy'
+  | 'robots_blocked'
+  | 'link_only'
+  | 'error';
+
+export type LivePlatformState = 'pending' | 'running' | SourceRunStatus;
+
 export interface SourceCollectionLog {
   readonly source: string;
   readonly connector: string;
   readonly accessMode?: JobBoardAccessMode;
-  readonly status: 'ok' | 'cached' | 'disabled_policy' | 'robots_blocked' | 'link_only' | 'error';
+  readonly status: SourceRunStatus;
   readonly collectedCount: number;
   readonly matchedCount: number;
   readonly durationMs: number;
@@ -299,6 +320,8 @@ export interface AppState {
   readonly lastSearchGroundingUrls: readonly { readonly title: string; readonly url: string }[];
   readonly lastExternalSearchLinks: readonly ExternalSearchLink[];
   readonly lastSourceLogs: readonly SourceCollectionLog[];
+  readonly livePlatformStatuses: Readonly<Record<string, LivePlatformState>>;
+  readonly lastQueriesExecuted: readonly string[];
   readonly errors: readonly AppError[];
   readonly lastDispatchNotice: string | null;
 }

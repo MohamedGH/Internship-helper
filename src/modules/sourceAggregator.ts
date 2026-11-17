@@ -14,14 +14,22 @@ import { normalizeChannelsFromRaw } from './channelFinder';
 export const ALL_SOURCES: readonly string[] = [
   SourceProvider.CompanyCareer,
   SourceProvider.FranceTravail,
+  SourceProvider.AFJV,
   SourceProvider.Meteojob,
   SourceProvider.Apec,
   SourceProvider.WelcomeToTheJungle,
   SourceProvider.HelloWork,
+  SourceProvider.LesJeudis,
   SourceProvider.Remotive,
+  SourceProvider.RemoteOK,
   SourceProvider.WeWorkRemotely,
+  SourceProvider.Arbeitnow,
+  SourceProvider.Himalayas,
+  SourceProvider.Jobicy,
   SourceProvider.LinkedIn,
   SourceProvider.Indeed,
+  SourceProvider.Glassdoor,
+  SourceProvider.Wellfound,
   SourceProvider.JobTeaser,
 ];
 
@@ -38,7 +46,7 @@ export const DEFAULT_SEARCH_QUERY: SearchQuery = {
   languages: [],
   experienceLevel: '',
   includeExternalDiscovery: true,
-  sources: ALL_SOURCES.slice(0, 8),
+  sources: ALL_SOURCES.slice(0, 14),
 };
 
 export const mapRawSourceName = (
@@ -70,10 +78,18 @@ export const mapRawSourceName = (
   if (lower.includes('meteojob')) return SourceProvider.Meteojob;
   if (lower.includes('apec')) return SourceProvider.Apec;
   if (lower.includes('france travail') || lower.includes('pole-emploi')) return SourceProvider.FranceTravail;
+  if (lower.includes('lesjeudis') || lower.includes('les jeudis')) return SourceProvider.LesJeudis;
+  if (lower.includes('afjv')) return SourceProvider.AFJV;
+  if (lower.includes('remote ok') || lower.includes('remoteok')) return SourceProvider.RemoteOK;
   if (lower.includes('remotive')) return SourceProvider.Remotive;
   if (lower.includes('we work remotely') || lower.includes('weworkremotely')) return SourceProvider.WeWorkRemotely;
+  if (lower.includes('arbeitnow')) return SourceProvider.Arbeitnow;
+  if (lower.includes('himalayas')) return SourceProvider.Himalayas;
+  if (lower.includes('jobicy')) return SourceProvider.Jobicy;
   if (lower.includes('linkedin')) return SourceProvider.LinkedIn;
   if (lower.includes('indeed')) return SourceProvider.Indeed;
+  if (lower.includes('glassdoor')) return SourceProvider.Glassdoor;
+  if (lower.includes('wellfound')) return SourceProvider.Wellfound;
   if (lower.includes('hellowork') || lower.includes('regionsjob')) return SourceProvider.HelloWork;
   if (lower.includes('jobteaser')) return SourceProvider.JobTeaser;
   if (lower.includes('career') || lower.includes('entreprise')) return SourceProvider.CompanyCareer;
@@ -180,6 +196,8 @@ export interface RawOfferInput {
   readonly experienceLevel?: string | null;
   readonly languages?: readonly string[];
   readonly matchScore?: number;
+  readonly matchReasons?: readonly string[];
+  readonly missions?: readonly string[];
   readonly description?: string;
   readonly requirements?: readonly string[];
   readonly applicationEmail?: string | null;
@@ -295,6 +313,8 @@ export const normalizeOffer = (
     experienceLevel: raw.experienceLevel ?? null,
     languages: raw.languages ?? [],
     matchScore: typeof raw.matchScore === 'number' ? raw.matchScore : undefined,
+    matchReasons: raw.matchReasons,
+    missions: raw.missions,
     description: raw.description?.trim() || '',
     requirements: (raw.requirements ?? []).map((item) => item.trim()).filter(Boolean),
     channels,

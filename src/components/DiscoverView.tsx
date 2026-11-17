@@ -152,6 +152,114 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     onOpenDossier(offer.id);
   };
 
+  const hasProfileContext = Boolean(
+    state.profile.targetRole.trim() ||
+      state.profile.location.trim() ||
+      state.profile.degree.trim() ||
+      state.profile.skills.length > 0
+  );
+
+  const handleSyncFromProfile = () => {
+    const nextRole = state.profile.targetRole.trim();
+    const nextLoc = state.profile.location.trim();
+    const nextEdu = state.profile.degree.trim();
+    const nextSkills = state.profile.skills;
+
+    dispatch({
+      type: 'SET_SEARCH_QUERY',
+      query: {
+        ...(nextRole ? { keywords: nextRole } : {}),
+        ...(nextLoc ? { location: nextLoc } : {}),
+        ...(nextEdu ? { educationLevel: nextEdu } : {}),
+        ...(nextSkills.length > 0 ? { skills: [...nextSkills] } : {}),
+      },
+    });
+  };
+
+  const getLiveStateDisplay = (
+    status: string | undefined
+  ): { readonly label: string; readonly className: string } => {
+    switch (status) {
+      case 'running':
+        return { label: 'Running...', className: 'text-blue-700 font-semibold' };
+      case 'pending':
+        return { label: 'Pending', className: 'text-slate-500' };
+      case 'ok':
+        return { label: 'Collected', className: 'text-emerald-700 font-semibold' };
+      case 'cached':
+        return { label: 'Cached', className: 'text-emerald-700 font-semibold' };
+      case 'empty':
+        return { label: 'Empty (0)', className: 'text-slate-600 font-medium' };
+      case 'link_only':
+        return { label: 'Link Only', className: 'text-amber-700 font-medium' };
+      case 'robots_blocked':
+        return { label: 'Robots Blocked', className: 'text-amber-700 font-medium' };
+      case 'disabled_policy':
+        return { label: 'Policy Disabled', className: 'text-slate-500' };
+      case 'error':
+        return { label: 'Error', className: 'text-red-700 font-semibold' };
+      default:
+        return { label: status ?? 'Idle', className: 'text-slate-500' };
+    }
+  };
+
+  const sourceMetadataMap = new Map(state.customSources.map((s) => [s.name, s]));
+  const logsBySource = new Map<string, (typeof state.lastSourceLogs)[number][]>();
+  for (const log of state.lastSourceLogs) {
+    const list = logsBySource.get(log.source) ?? [];
+    list.push(log);
+    logsBySource.set(log.source, list);
+  }
+
+  const telemetryRows = (() => {
+    const rows: Array<{
+      readonly key: string;
+      readonly platform: string;
+      readonly connectorLabel: string;
+      readonly accessModeLabel: string;
+      readonly state: string;
+      readonly collectedCount: number;
+      readonly matchedCount: number;
+      readonly durationMs: number | null;
+      readonly message: string;
+    }> = [];
+
+    for (const log of state.lastSourceLogs) {
+      const srcMeta = sourceMetadataMap.get(log.source);
+      rows.push({
+        key: `${log.source}::${log.connector}`,
+        platform: log.source,
+        connectorLabel: log.connector,
+        accessModeLabel: getAccessModeShortLabel(log.accessMode ?? srcMeta?.accessMode),
+        state: log.status,
+        collectedCount: log.collectedCount,
+        matchedCount: log.matchedCount,
+        durationMs: log.durationMs,
+        message: log.message ?? srcMeta?.policySummary ?? '',
+      });
+    }
+
+    for (const sourceName of state.searchQuery.sources) {
+      if (logsBySource.has(sourceName)) continue;
+      const liveState = state.livePlatformStatuses[sourceName];
+      if (!state.isSearching && !liveState) continue;
+      const srcMeta = sourceMetadataMap.get(sourceName);
+      rows.push({
+        key: `live::${sourceName}`,
+        platform: sourceName,
+        connectorLabel: srcMeta?.isDefault ? 'built-in' : 'custom',
+        accessModeLabel: getAccessModeShortLabel(srcMeta?.accessMode),
+        state: liveState ?? 'pending',
+        collectedCount: 0,
+        matchedCount: 0,
+        durationMs: null,
+        message: srcMeta?.policySummary ?? srcMeta?.description ?? '',
+      });
+    }
+
+    return rows;
+  })();
+
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8 space-y-6 pb-24 md:pb-12">
       {/* Page Intro & Profile Context */}
@@ -161,17 +269,28 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             Multi-Source Stage &amp; Internship Finder
           </h1>
           <p className="text-sm sm:text-base text-slate-600 mt-1.5">
-            Search internships across job boards and company career portals, adapt your{' '}
-            <span className="text-slate-900 font-medium">lettre de motivation</span> and CV to
-            each offer, verify where to apply, and send in one click.
+            Run bilingual, profile-driven queries across ATS boards, public APIs, RSS feeds, and
+            curated portals, filter by exact criteria, and prepare your application dossier.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-slate-600 shrink-0">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 shrink-0">
           <span>
             Active CV:{' '}
             {state.profile.fullName.trim() ? state.profile.fullName : 'Not configured yet'}
           </span>
+          {hasProfileContext && (
+            <>
+              <span aria-hidden="true">·</span>
+              <button
+                type="button"
+                onClick={handleSyncFromProfile}
+                className="min-h-[36px] px-2.5 py-1 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg transition-colors whitespace-nowrap"
+              >
+                Fill from CV
+              </button>
+            </>
+          )}
           <span aria-hidden="true">·</span>
           <button
             type="button"
@@ -757,36 +876,92 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         </section>
       )}
 
-      {/* Scraper Collection Summary & Policy-Restricted External Links */}
-      {(state.lastSourceLogs.length > 0 || state.lastExternalSearchLinks.length > 0) && (
+      {/* Platform Status & Collection Telemetry Monitor */}
+      {(telemetryRows.length > 0 ||
+        state.lastQueriesExecuted.length > 0 ||
+        state.lastExternalSearchLinks.length > 0) && (
         <section
-          aria-label="Scraping report and external board links"
-          className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 text-xs text-slate-600"
+          aria-label="Platform collection status and external links"
+          className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 space-y-4 text-xs text-slate-600"
         >
-          {state.lastSourceLogs.length > 0 && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-              <span className="font-semibold text-slate-800">Scraper Run:</span>
-              {state.lastSourceLogs.map((log, idx) => (
-                <span key={`${log.connector}_${idx}`} className="font-mono text-[11px] text-slate-700">
-                  {log.source} ({log.connector}): {log.matchedCount}/{log.collectedCount} matched ·{' '}
-                  <span
-                    className={
-                      log.status === 'ok' || log.status === 'cached'
-                        ? 'text-emerald-700 font-semibold'
-                        : log.status === 'disabled_policy'
-                          ? 'text-slate-500'
-                          : 'text-amber-700 font-semibold'
-                    }
-                  >
-                    {log.status}
-                  </span>
+          {state.lastQueriesExecuted.length > 0 && (
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="font-semibold text-slate-900 shrink-0">
+                Queries Executed ({state.lastQueriesExecuted.length}):
+              </span>
+              <span className="font-mono text-[11px] text-slate-600">
+                {state.lastQueriesExecuted.join(' · ')}
+              </span>
+            </div>
+          )}
+
+          {telemetryRows.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-xs font-semibold text-slate-900">
+                  Platform Collection Status
+                </h2>
+                <span className="font-mono tabular-nums text-[11px] text-slate-500">
+                  {telemetryRows.length} active connectors/platforms tracked
                 </span>
-              ))}
+              </div>
+
+              <div className="overflow-x-auto -mx-2 px-2">
+                <table className="w-full text-left border-collapse min-w-[680px]">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-[11px] font-medium text-slate-500">
+                      <th className="py-2 pr-3">Platform</th>
+                      <th className="py-2 pr-3">Access Mode</th>
+                      <th className="py-2 pr-3">State</th>
+                      <th className="py-2 pr-3 text-right">Collected</th>
+                      <th className="py-2 pr-3 text-right">Matched</th>
+                      <th className="py-2 pr-3 text-right">Time</th>
+                      <th className="py-2">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {telemetryRows.map((row) => {
+                      const stateMeta = getLiveStateDisplay(row.state);
+                      return (
+                        <tr key={row.key} className="hover:bg-slate-50/70">
+                          <td className="py-2 pr-3 font-medium text-slate-900 whitespace-nowrap">
+                            <span>{row.platform}</span>
+                            <span className="ml-1.5 font-mono text-[11px] font-normal text-slate-400">
+                              {row.connectorLabel}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-3 font-mono text-[11px] text-slate-600 whitespace-nowrap">
+                            {row.accessModeLabel}
+                          </td>
+                          <td className={`py-2 pr-3 whitespace-nowrap ${stateMeta.className}`}>
+                            {stateMeta.label}
+                          </td>
+                          <td className="py-2 pr-3 text-right font-mono tabular-nums text-slate-700 whitespace-nowrap">
+                            {row.collectedCount}
+                          </td>
+                          <td className="py-2 pr-3 text-right font-mono tabular-nums font-semibold text-slate-900 whitespace-nowrap">
+                            {row.matchedCount}
+                          </td>
+                          <td className="py-2 pr-3 text-right font-mono tabular-nums text-slate-500 whitespace-nowrap">
+                            {row.durationMs !== null ? `${row.durationMs} ms` : '—'}
+                          </td>
+                          <td
+                            className="py-2 text-slate-500 max-w-[300px] truncate"
+                            title={row.message}
+                          >
+                            {row.message || '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
           {state.lastExternalSearchLinks.length > 0 && (
-            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-x-4 gap-y-1.5">
               <span className="font-semibold text-slate-800">
                 External Portals (ToS / Auth Protected — Open Directly):
               </span>
@@ -973,6 +1148,20 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                           : offer.description || 'See original listing for detailed role scope.'}
                       </p>
 
+                      {offer.missions && offer.missions.length > 0 && offer.contentAccessible !== false && (
+                        <p className="text-xs text-slate-700 max-w-3xl line-clamp-2">
+                          <span className="font-medium text-slate-900">Missions:</span>{' '}
+                          {offer.missions.slice(0, 2).join(' · ')}
+                        </p>
+                      )}
+
+                      {offer.matchReasons && offer.matchReasons.length > 0 && (
+                        <p className="text-xs text-slate-500 max-w-3xl">
+                          <span className="font-medium text-slate-700">Why it matched:</span>{' '}
+                          {offer.matchReasons.slice(0, 4).join(' · ')}
+                        </p>
+                      )}
+
                       {/* Matched CV Skills & Channel / Provenance line (clean unboxed text) */}
                       <div className="pt-1 flex flex-col sm:flex-row sm:items-center flex-wrap gap-2 sm:gap-4 text-xs text-slate-600">
                         <div>
@@ -988,6 +1177,23 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                           <span>Open original listing</span>
                           <ExternalLink className="w-3 h-3 shrink-0" aria-hidden="true" />
                         </a>
+                        {offer.alternateUrls && offer.alternateUrls.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                            <span>Also on:</span>
+                            {offer.alternateUrls.slice(0, 2).map((altUrl, altIdx) => (
+                              <a
+                                key={altUrl}
+                                href={altUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-slate-700 hover:text-blue-700 hover:underline"
+                              >
+                                <span>Mirror {altIdx + 1}</span>
+                                <ExternalLink className="w-3 h-3 shrink-0" aria-hidden="true" />
+                              </a>
+                            ))}
+                          </div>
+                        )}
                         {!isUnverifiedExternal && preferredChannel && (
                           <div className="flex items-center gap-1.5 min-w-0">
                             {preferredChannel.type === ChannelType.Email ? (

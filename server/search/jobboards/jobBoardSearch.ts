@@ -1,19 +1,17 @@
 import {
-  ConnectorExecutionResult,
+  createGenericWebDiscoveryAdapter,
+} from '../platforms/genericSearchProvider.ts';
+import { createPlatformAdapterForConfig } from '../platforms/platformRegistry.ts';
+import {
   ExternalSearchLink,
   JobBoardPolicySnapshot,
   ScraperConnector,
   SearchCriteria,
 } from '../types.ts';
 import { isSearchIndexDiscoveryAllowed, toPolicySnapshot } from './jobBoardPolicy.ts';
-import {
-  createJobBoardProviderForConfig,
-  mapDiscoveryHitToRawOffer,
-} from './jobBoardProvider.ts';
 import { listJobBoardConfigs, resolveJobBoardsForCriteria } from './jobBoardRegistry.ts';
 import {
   WebSearchDiscoveryProvider,
-  buildDiscoveryQueries,
   resolveActiveDiscoveryProvider,
 } from './searchDiscoveryProvider.ts';
 
@@ -25,8 +23,8 @@ export interface JobBoardSearchOptions {
 }
 
 /**
- * Builds ScraperConnector adapters from the JobBoard registry so the main
- * scraperEngine executes ATS connectors and JobBoard providers uniformly.
+ * Builds ScraperConnector adapters from the platform registry so the main
+ * scraperEngine executes ATS connectors and multi-platform providers uniformly.
  */
 export const resolveJobBoardConnectors = (
   criteria: SearchCriteria,
@@ -43,7 +41,7 @@ export const resolveJobBoardConnectors = (
   const connectors: ScraperConnector[] = [];
 
   for (const config of selectedBoards) {
-    const provider = createJobBoardProviderForConfig(config, {
+    const adapter = createPlatformAdapterForConfig(config, {
       fetchFn,
       discoveryProvider,
       env,
@@ -51,7 +49,7 @@ export const resolveJobBoardConnectors = (
     });
 
     connectors.push({
-      id: provider.id,
+      id: adapter.id,
       sourceName: config.name,
       policyDisabled:
         config.accessMode === 'disabled' ||
@@ -64,57 +62,18 @@ export const resolveJobBoardConnectors = (
         reason: config.policySummary,
         accessMode: config.accessMode,
       }),
-      collect: (c) => provider.collect(c),
+      collect: (c) => adapter.collect(c),
     });
   }
 
-  // Also add an overarching bilingual Web Discovery connector when a search API / SearXNG
-  // instance is configured and external discovery is requested.
+  // Overarching multi-query FR/EN Web Discovery connector when an authorized search index
+  // provider (SearXNG JSON, Brave API, Custom Search JSON) is configured.
   if (
     criteria.includeExternalDiscovery !== false &&
     discoveryProvider &&
     discoveryProvider.isConfigured()
   ) {
-    connectors.push({
-      id: `web_discovery:${discoveryProvider.id}`,
-      sourceName: `Web Discovery (${discoveryProvider.name})`,
-      collect: async (c): Promise<ConnectorExecutionResult> => {
-        const started = Date.now();
-        try {
-          const allQueries = buildDiscoveryQueries(c, selectedBoards, 4);
-          // Skip targeted board queries already run per-board above; run general FR/EN queries
-          const generalQueries = allQueries.filter((q) => !q.targetDomains?.length);
-          const hitBatches = await Promise.all(
-            generalQueries.map((q) => discoveryProvider.search(q).catch(() => []))
-          );
-          const offers = hitBatches
-            .flat()
-            .map((hit) => mapDiscoveryHitToRawOffer(hit));
-
-          return {
-            source: `Web Discovery (${discoveryProvider.name})`,
-            connector: discoveryProvider.id,
-            accessMode: 'search_index',
-            status: 'ok',
-            offers,
-            externalSearchLinks: [],
-            durationMs: Date.now() - started,
-            message: `Discovered ${offers.length} general FR/EN web result(s) via ${discoveryProvider.name}.`,
-          };
-        } catch (err) {
-          return {
-            source: `Web Discovery (${discoveryProvider.name})`,
-            connector: discoveryProvider.id,
-            accessMode: 'search_index',
-            status: 'error',
-            offers: [],
-            externalSearchLinks: [],
-            durationMs: Date.now() - started,
-            message: err instanceof Error ? err.message : 'Web discovery failed',
-          };
-        }
-      },
-    });
+    connectors.push(createGenericWebDiscoveryAdapter(discoveryProvider, { maxQueries: 6 }));
   }
 
   return connectors;

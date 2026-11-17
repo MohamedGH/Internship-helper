@@ -8,6 +8,7 @@ import {
   ExternalSearchLink,
   FilterState,
   InternshipOffer,
+  LivePlatformState,
   PreparedDossier,
   SearchQuery,
   SourceCollectionLog,
@@ -49,13 +50,21 @@ export type AppAction =
   | { readonly type: 'SET_PROFILE'; readonly profile: CandidateProfile }
   | { readonly type: 'SET_SEARCH_QUERY'; readonly query: Partial<SearchQuery> }
   | { readonly type: 'SET_FILTERS'; readonly filters: Partial<FilterState> }
-  | { readonly type: 'SEARCH_STARTED' }
+  | { readonly type: 'SEARCH_STARTED'; readonly sources?: readonly string[] }
+  | {
+      readonly type: 'SEARCH_PROGRESS_INIT';
+      readonly queriesExecuted: readonly string[];
+      readonly sources: readonly string[];
+    }
+  | { readonly type: 'SEARCH_SOURCE_STARTED'; readonly source: string }
+  | { readonly type: 'SEARCH_SOURCE_COMPLETED'; readonly log: SourceCollectionLog }
   | {
       readonly type: 'SEARCH_SUCCEEDED';
       readonly offers: readonly InternshipOffer[];
       readonly groundingUrls: readonly { readonly title: string; readonly url: string }[];
       readonly externalSearchLinks?: readonly ExternalSearchLink[];
       readonly sourceLogs?: readonly SourceCollectionLog[];
+      readonly queriesExecuted?: readonly string[];
     }
   | { readonly type: 'SEARCH_FAILED'; readonly error: AppError }
   | { readonly type: 'PREPARE_STARTED'; readonly offerId: string }
@@ -139,6 +148,8 @@ export const createInitialState = (
   lastSearchGroundingUrls: [],
   lastExternalSearchLinks: [],
   lastSourceLogs: [],
+  livePlatformStatuses: {},
+  lastQueriesExecuted: [],
   errors: [],
   lastDispatchNotice: null,
 });
@@ -257,17 +268,63 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
       };
     }
 
-    case 'SEARCH_STARTED':
+    case 'SEARCH_STARTED': {
+      const initStatuses: Record<string, LivePlatformState> = {};
+      for (const s of action.sources ?? state.searchQuery.sources) {
+        initStatuses[s] = 'pending';
+      }
       return {
         ...state,
         isSearching: true,
         lastDispatchNotice: null,
+        lastSourceLogs: [],
+        livePlatformStatuses: initStatuses,
       };
+    }
+
+    case 'SEARCH_PROGRESS_INIT': {
+      const nextStatuses: Record<string, LivePlatformState> = { ...state.livePlatformStatuses };
+      for (const s of action.sources) {
+        if (!nextStatuses[s]) nextStatuses[s] = 'pending';
+      }
+      return {
+        ...state,
+        lastQueriesExecuted: action.queriesExecuted,
+        livePlatformStatuses: nextStatuses,
+      };
+    }
+
+    case 'SEARCH_SOURCE_STARTED':
+      return {
+        ...state,
+        livePlatformStatuses: {
+          ...state.livePlatformStatuses,
+          [action.source]: 'running',
+        },
+      };
+
+    case 'SEARCH_SOURCE_COMPLETED': {
+      const existingLogs = state.lastSourceLogs.filter(
+        (l) => !(l.source === action.log.source && l.connector === action.log.connector)
+      );
+      return {
+        ...state,
+        lastSourceLogs: [...existingLogs, action.log],
+        livePlatformStatuses: {
+          ...state.livePlatformStatuses,
+          [action.log.source]: action.log.status,
+        },
+      };
+    }
 
     case 'SEARCH_SUCCEEDED': {
       const preservedOffers = state.offers.filter(
         (o) => o.status !== ApplicationStatus.Discovered || Boolean(state.dossiers[o.id])
       );
+      const finalStatuses: Record<string, LivePlatformState> = { ...state.livePlatformStatuses };
+      for (const log of action.sourceLogs ?? []) {
+        finalStatuses[log.source] = log.status;
+      }
       return {
         ...state,
         isSearching: false,
@@ -275,6 +332,8 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
         lastSearchGroundingUrls: action.groundingUrls,
         lastExternalSearchLinks: action.externalSearchLinks ?? [],
         lastSourceLogs: action.sourceLogs ?? [],
+        livePlatformStatuses: finalStatuses,
+        lastQueriesExecuted: action.queriesExecuted ?? state.lastQueriesExecuted,
       };
     }
 
@@ -661,10 +720,23 @@ export const hydratePersistedState = (raw: string | null): AppState => {
       }
     }
 
+    const newDefaultEnabledNames = base.customSources
+      .filter((b) => !existingIds.has(b.id) && b.enabled)
+      .map((b) => b.name);
+
+    const hydratedSearchQuery = parsed.searchQuery?.keywords
+      ? {
+          ...parsed.searchQuery,
+          sources: Array.from(
+            new Set([...(parsed.searchQuery.sources ?? []), ...newDefaultEnabledNames])
+          ),
+        }
+      : base.searchQuery;
+
     return {
       ...base,
       profile: parsed.profile && typeof parsed.profile === 'object' ? parsed.profile : base.profile,
-      searchQuery: parsed.searchQuery?.keywords ? parsed.searchQuery : base.searchQuery,
+      searchQuery: hydratedSearchQuery,
       customSources: mergedSources,
       offers: hydratedOffers,
       dossiers: hydratedDossiers,

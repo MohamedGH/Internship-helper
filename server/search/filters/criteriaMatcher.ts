@@ -20,6 +20,7 @@ export const DOMAIN_TAXONOMY: Record<string, readonly string[]> = {
     'c++',
     'go',
     'rust',
+    'c#',
   ],
   'développement web': [
     'web',
@@ -33,6 +34,9 @@ export const DOMAIN_TAXONOMY: Record<string, readonly string[]> = {
     'next.js',
     'vue',
     'node',
+    'php',
+    'laravel',
+    'symfony',
     'css',
     'html',
   ],
@@ -49,6 +53,7 @@ export const DOMAIN_TAXONOMY: Record<string, readonly string[]> = {
     'snowflake',
     'bigquery',
     'pipeline',
+    'pandas',
   ],
   ia: [
     'ia',
@@ -79,18 +84,52 @@ export const DOMAIN_TAXONOMY: Record<string, readonly string[]> = {
 };
 
 const REGION_NEIGHBORS: Record<string, readonly string[]> = {
-  paris: ['ile-de-france', 'île-de-france', 'levallois', 'boulogne', 'neuilly', 'issy', 'la défense'],
-  lyon: ['auvergne-rhône-alpes', 'villeurbanne'],
-  bordeaux: ['nouvelle-aquitaine'],
-  toulouse: ['occitanie', 'blagnac'],
-  nantes: ['pays de la loire'],
-  lille: ['hauts-de-france', 'villeneuve'],
+  paris: [
+    'ile-de-france',
+    'idf',
+    'levallois',
+    'boulogne',
+    'neuilly',
+    'issy',
+    'la defense',
+    'nanterre',
+    'courbevoie',
+    'montreuil',
+    'saint-denis',
+    'puteaux',
+    'clichy',
+  ],
+  lyon: ['auvergne-rhone-alpes', 'villeurbanne', 'bron', 'ecully', 'venissieux'],
+  bordeaux: ['nouvelle-aquitaine', 'merignac', 'pessac', 'talence'],
+  toulouse: ['occitanie', 'blagnac', 'labege', 'colomiers'],
+  nantes: ['pays de la loire', 'carquefou', 'saint-herblain'],
+  lille: [
+    'hauts-de-france',
+    'villeneuve',
+    "villeneuve-d'ascq",
+    'villeneuve d ascq',
+    'roubaix',
+    'tourcoing',
+    'marcq',
+    'wasquehal',
+    'lambersart',
+    'lesquin',
+    'lomme',
+    'hellemmes',
+    'nord',
+  ],
+  marseille: ['aix-en-provence', 'aix', 'bouches-du-rhone', 'paca'],
+  strasbourg: ['alsace', 'grand est', 'illkirch'],
+  rennes: ['bretagne', 'cesson-sevigne'],
+  grenoble: ['isere', 'meylan'],
+  montpellier: ['herault', 'castelnau'],
+  nice: ['sophia antipolis', 'sophia-antipolis', 'cannes', 'valbonne'],
 };
 
 const FRENCH_CITIES = new Set(Object.keys(REGION_NEIGHBORS));
 
 const INTERNSHIP_KEYWORDS_REGEX =
-  /\b(stage|stagiaire|intern|internship|pfe|fin d['’]études|césure|alternance|apprentice)\b/i;
+  /\b(stage|stagiaire|intern|internship|pfe|fin d['’]etudes|fin d['’]études|cesure|césure|alternance|apprentice|werkstudent|trainee)\b/i;
 
 const STOPWORDS = new Set([
   'stage',
@@ -101,11 +140,11 @@ const STOPWORDS = new Set([
   'des',
   'en',
   'et',
+  'ou',
   'or',
   'and',
   'the',
   'for',
-  'à',
   'a',
   'in',
 ]);
@@ -117,19 +156,23 @@ export const TECH_SYNONYM_GROUPS: ReadonlyArray<readonly string[]> = [
   ['node.js', 'node', 'nodejs'],
   ['postgresql', 'postgres', 'psql'],
   ['python', 'py'],
+  ['php', 'laravel', 'symfony'],
   ['next.js', 'nextjs'],
   ['vue', 'vuejs', 'vue.js'],
   ['kubernetes', 'k8s'],
   ['machine learning', 'ml'],
   ['artificial intelligence', 'ai', 'ia', 'intelligence artificielle'],
-  ['business intelligence', 'bi', 'informatique décisionnelle', 'décisionnel'],
+  ['business intelligence', 'bi', 'informatique decisionnelle', 'decisionnel'],
   ['c#', 'csharp'],
   ['tailwind', 'tailwindcss'],
-  ['developpeur', 'développeur', 'developer', 'dev', 'software engineer', 'ingénieur'],
+  ['developpeur', 'developer', 'dev', 'software engineer', 'ingenieur'],
 ];
 
+export const stripAccents = (value: string): string =>
+  value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
 export const expandTermWithSynonyms = (term: string): readonly string[] => {
-  const clean = term.toLowerCase().trim();
+  const clean = stripAccents(term.trim());
   if (!clean) return [];
   const expanded = new Set<string>([clean]);
   for (const group of TECH_SYNONYM_GROUPS) {
@@ -140,36 +183,42 @@ export const expandTermWithSynonyms = (term: string): readonly string[] => {
   return Array.from(expanded);
 };
 
-const corpusMatchesTermOrSynonym = (corpus: string, term: string): boolean => {
+const corpusMatchesTermOrSynonym = (normalizedCorpus: string, term: string): boolean => {
   const aliases = expandTermWithSynonyms(term);
   return aliases.some((alias) => {
-    if (alias.length <= 2) {
+    if (alias.length <= 3) {
       const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(corpus);
+      return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(normalizedCorpus);
     }
-    return corpus.includes(alias);
+    return normalizedCorpus.includes(alias);
   });
 };
 
 export const tokenizeKeywords = (keywords: string): readonly string[] =>
-  keywords
-    .toLowerCase()
-    .split(/[^a-z0-9àâäéèêëïîôöùûüç+#.-]+/i)
+  stripAccents(keywords)
+    .split(/[^a-z0-9+#.-]+/i)
     .map((t) => t.trim())
     .filter((t) => t.length >= 2 && !STOPWORDS.has(t));
 
 export const isInternshipOffer = (offer: NormalizedScrapedOffer): boolean => {
-  const corpus = `${offer.title} ${offer.contractType ?? ''} ${offer.description.slice(0, 350)}`;
+  const corpus = `${offer.title} ${offer.contractType ?? ''} ${offer.description.slice(0, 450)}`;
   return INTERNSHIP_KEYWORDS_REGEX.test(corpus);
 };
 
-const matchesLocationCriteria = (
+type LocationMatchTier = 'exact_city' | 'region_metro' | 'remote_global' | 'unmatched';
+
+const evaluateLocationTier = (
   offer: NormalizedScrapedOffer,
   criteria: SearchCriteria
-): boolean => {
-  const requestedLoc = criteria.location.trim().toLowerCase();
-  if (!requestedLoc || requestedLoc === 'all' || requestedLoc === 'anywhere' || requestedLoc === 'international') {
-    return true;
+): LocationMatchTier => {
+  const requestedLoc = stripAccents(criteria.location.trim());
+  if (
+    !requestedLoc ||
+    requestedLoc === 'all' ||
+    requestedLoc === 'anywhere' ||
+    requestedLoc === 'international'
+  ) {
+    return 'exact_city';
   }
 
   const locParts = requestedLoc
@@ -177,55 +226,60 @@ const matchesLocationCriteria = (
     .map((p) => p.trim())
     .filter(Boolean);
 
-  // If user requested "Paris / Remote", allow Remote offers or location match
-  const wantsRemoteToo = locParts.some((p) => p.includes('remote') || p.includes('télétravail'));
+  const wantsRemoteToo = locParts.some(
+    (p) => p.includes('remote') || p.includes('teletravail')
+  );
   if (wantsRemoteToo && offer.workMode === 'Remote') {
-    return true;
+    return 'remote_global';
   }
 
-  const offerLocLower = offer.location.toLowerCase();
+  const offerLocLower = stripAccents(offer.location);
   if (offerLocLower === 'unspecified') {
-    return true;
+    return 'remote_global';
   }
 
-  // Discovered search links may only contain city inside title/description rather than structured location
-  const searchCorpus = `${offerLocLower} ${offer.title.toLowerCase()}`;
+  const searchCorpus = `${offerLocLower} ${stripAccents(offer.title)}`;
 
   for (const part of locParts) {
-    if (part === 'remote' || part === 'télétravail') continue;
-    if (searchCorpus.includes(part)) return true;
+    if (part === 'remote' || part === 'teletravail') continue;
+    if (searchCorpus.includes(part)) return 'exact_city';
 
     const neighbors = REGION_NEIGHBORS[part];
     if (neighbors && (criteria.radiusKm === undefined || criteria.radiusKm >= 15)) {
-      if (neighbors.some((n) => searchCorpus.includes(n))) return true;
+      if (neighbors.some((n) => searchCorpus.includes(n))) return 'region_metro';
     }
   }
 
-  // Country fallback when "France" is part of offer location and requested city is French
+  // National France remote or European remote fallback
   if (
     locParts.some((p) => FRENCH_CITIES.has(p)) &&
-    offerLocLower.includes('france') &&
+    offer.workMode === 'Remote' &&
+    (offerLocLower.includes('france') ||
+      offerLocLower.includes('europe') ||
+      offerLocLower.includes('emea') ||
+      offerLocLower.includes('worldwide') ||
+      offerLocLower.includes('remote')) &&
     (criteria.radiusKm === undefined || criteria.radiusKm >= 50)
   ) {
-    if (offer.workMode === 'Remote') return true;
+    return 'remote_global';
   }
 
-  return false;
+  return 'unmatched';
 };
 
 const matchesWorkModeCriteria = (
   offer: NormalizedScrapedOffer,
   workMode: string
 ): boolean => {
-  const normalized = workMode.trim().toLowerCase();
+  const normalized = stripAccents(workMode.trim());
   if (!normalized || normalized === 'all') return true;
-  if (normalized === 'remote' || normalized === 'télétravail') {
+  if (normalized === 'remote' || normalized === 'teletravail') {
     return offer.workMode === 'Remote';
   }
   if (normalized === 'hybrid' || normalized === 'hybride') {
     return offer.workMode === 'Hybrid';
   }
-  if (normalized === 'on-site' || normalized === 'présentiel') {
+  if (normalized === 'on-site' || normalized === 'presentiel') {
     return offer.workMode === 'On-site';
   }
   return true;
@@ -236,25 +290,33 @@ const matchesEducationAndExperience = (
   criteria: SearchCriteria
 ): boolean => {
   if (criteria.educationLevel?.trim() && offer.educationLevel) {
-    const reqEdu = criteria.educationLevel.toLowerCase();
-    const offerEdu = offer.educationLevel.toLowerCase();
-    const isMaster = /bac\s*\+\s*5|master|m2|miage|ingénieur/.test(reqEdu);
-    const offerIsBachelorOnly = /bac\s*\+\s*2|bts|dut/.test(offerEdu) && !/bac\s*\+\s*[345]/.test(offerEdu);
+    const reqEdu = stripAccents(criteria.educationLevel);
+    const offerEdu = stripAccents(offer.educationLevel);
+    const isMaster = /bac\s*\+\s*5|master|m2|ingenieur/.test(reqEdu);
+    const offerIsBachelorOnly =
+      /bac\s*\+\s*2|bts|dut/.test(offerEdu) && !/bac\s*\+\s*[345]/.test(offerEdu);
     if (isMaster && offerIsBachelorOnly) return false;
   }
 
   if (criteria.experienceLevel?.trim() && offer.experienceLevel) {
-    const reqExp = criteria.experienceLevel.toLowerCase();
+    const reqExp = stripAccents(criteria.experienceLevel);
     const seniorYears = offer.experienceLevel.match(/([3-9]|1\d)\+/);
-    if ((reqExp.includes('junior') || reqExp.includes('no experience') || reqExp.includes('stage')) && seniorYears) {
+    if (
+      (reqExp.includes('junior') ||
+        reqExp.includes('no experience') ||
+        reqExp.includes('stage')) &&
+      seniorYears
+    ) {
       return false;
     }
   }
 
   if (criteria.languages && criteria.languages.length > 0 && offer.languages.length > 0) {
-    const reqLangs = criteria.languages.map((l) => l.toLowerCase());
+    const reqLangs = criteria.languages.map((l) => stripAccents(l));
     const hasLang = offer.languages.some((ol) =>
-      reqLangs.some((rl) => ol.toLowerCase().includes(rl) || rl.includes(ol.toLowerCase()))
+      reqLangs.some(
+        (rl) => stripAccents(ol).includes(rl) || rl.includes(stripAccents(ol))
+      )
     );
     if (!hasLang) return false;
   }
@@ -266,20 +328,24 @@ const matchesKeywordOrDomain = (
   offer: NormalizedScrapedOffer,
   criteria: SearchCriteria
 ): boolean => {
-  const corpus = `${offer.title} ${offer.description} ${offer.requirements.join(' ')}`.toLowerCase();
+  const corpus = stripAccents(
+    `${offer.title} ${offer.description} ${offer.requirements.join(' ')}`
+  );
   const keywordTokens = tokenizeKeywords(criteria.keywords);
 
   const domainTerms: string[] = [];
   for (const dom of criteria.domains ?? []) {
     const mapped = DOMAIN_TAXONOMY[dom.toLowerCase().trim()];
     if (mapped) {
-      domainTerms.push(...mapped);
+      domainTerms.push(...mapped.map(stripAccents));
     } else if (dom.trim()) {
-      domainTerms.push(dom.toLowerCase().trim());
+      domainTerms.push(stripAccents(dom.trim()));
     }
   }
 
-  const explicitSkills = (criteria.skills ?? []).map((s) => s.toLowerCase().trim()).filter(Boolean);
+  const explicitSkills = (criteria.skills ?? [])
+    .map((s) => stripAccents(s.trim()))
+    .filter(Boolean);
 
   if (keywordTokens.length === 0 && domainTerms.length === 0 && explicitSkills.length === 0) {
     return true;
@@ -296,27 +362,22 @@ export const matchesMandatoryCriteria = (
   offer: NormalizedScrapedOffer,
   criteria: SearchCriteria
 ): boolean => {
-  // 0. Reject expired offers
   if (offer.verificationLevel === 'expired') {
     return false;
   }
 
-  // 1. Must prioritize internship/stage
   if (!isInternshipOffer(offer)) {
     return false;
   }
 
-  // 2. WorkMode check
   if (!matchesWorkModeCriteria(offer, criteria.workMode)) {
     return false;
   }
 
-  // 3. Location check
-  if (!matchesLocationCriteria(offer, criteria)) {
+  if (evaluateLocationTier(offer, criteria) === 'unmatched') {
     return false;
   }
 
-  // 4. Duration min/max check (reject if known & out of bounds; keep null when unspecified)
   if (
     !isOfferWithinDuration(
       offer.durationMonths,
@@ -328,7 +389,6 @@ export const matchesMandatoryCriteria = (
     return false;
   }
 
-  // 5. Start date range check (reject if known & out of bounds; keep null when unspecified)
   if (
     !isOfferWithinDateRange(
       offer.startDate,
@@ -340,12 +400,10 @@ export const matchesMandatoryCriteria = (
     return false;
   }
 
-  // 6. Education / Experience / Language checks
   if (!matchesEducationAndExperience(offer, criteria)) {
     return false;
   }
 
-  // 7. Keywords / domains / skills relevance check (with technical synonyms)
   if (!matchesKeywordOrDomain(offer, criteria)) {
     return false;
   }
@@ -353,55 +411,96 @@ export const matchesMandatoryCriteria = (
   return true;
 };
 
-export const computeRelevanceScore = (
+export const explainRelevanceMatch = (
   offer: NormalizedScrapedOffer,
   criteria: SearchCriteria
-): number => {
+): { readonly score: number; readonly reasons: readonly string[] } => {
   let score = 20;
-  const titleLower = offer.title.toLowerCase();
-  const corpus = `${offer.title} ${offer.description} ${offer.requirements.join(' ')}`.toLowerCase();
+  const reasons: string[] = [];
+  const titleNorm = stripAccents(offer.title);
+  const corpusNorm = stripAccents(
+    `${offer.title} ${offer.description} ${offer.requirements.join(' ')}`
+  );
 
-  // Keyword hits with synonym awareness (title hits weigh more than description hits)
+  // 1. Keyword relevance (title weights significantly higher)
   const keywordTokens = tokenizeKeywords(criteria.keywords);
   if (keywordTokens.length > 0) {
     let tokenPoints = 0;
+    const hitWords: string[] = [];
     for (const tok of keywordTokens) {
-      if (corpusMatchesTermOrSynonym(titleLower, tok)) tokenPoints += 12;
-      else if (corpusMatchesTermOrSynonym(corpus, tok)) tokenPoints += 5;
+      if (corpusMatchesTermOrSynonym(titleNorm, tok)) {
+        tokenPoints += 12;
+        hitWords.push(tok);
+      } else if (corpusMatchesTermOrSynonym(corpusNorm, tok)) {
+        tokenPoints += 5;
+        hitWords.push(tok);
+      }
     }
-    score += Math.min(30, tokenPoints);
+    if (hitWords.length > 0) {
+      reasons.push(`Role/keyword fit: ${hitWords.slice(0, 3).join(', ')}`);
+    }
+    score += Math.min(28, tokenPoints);
   }
 
-  // Explicit skills hits with synonym matching
-  const reqSkills = (criteria.skills ?? []).map((s) => s.toLowerCase().trim()).filter(Boolean);
+  // 2. Priority geographic & workMode score
+  const locTier = evaluateLocationTier(offer, criteria);
+  if (locTier === 'exact_city') {
+    score += 12;
+    reasons.push(`Priority location: ${offer.location}`);
+  } else if (locTier === 'region_metro') {
+    score += 8;
+    reasons.push(`Nearby metro: ${offer.location}`);
+  } else if (locTier === 'remote_global' && offer.workMode === 'Remote') {
+    score += 4;
+    reasons.push('Remote compatible');
+  }
+
+  // 3. Explicit CV / query skill hits
+  const reqSkills = (criteria.skills ?? []).map((s) => s.trim()).filter(Boolean);
   if (reqSkills.length > 0) {
-    const matchedCount = reqSkills.filter((sk) => corpusMatchesTermOrSynonym(corpus, sk)).length;
-    score += Math.round((matchedCount / reqSkills.length) * 20);
+    const matchedSkills = reqSkills.filter((sk) =>
+      corpusMatchesTermOrSynonym(corpusNorm, stripAccents(sk))
+    );
+    if (matchedSkills.length > 0) {
+      score += Math.round((matchedSkills.length / reqSkills.length) * 18);
+      reasons.push(`Skills: ${matchedSkills.slice(0, 4).join(', ')}`);
+    }
   }
 
-  // Domain taxonomy bonus
+  // 4. Domain taxonomy bonus
   for (const dom of criteria.domains ?? []) {
-    const terms = DOMAIN_TAXONOMY[dom.toLowerCase().trim()] ?? [dom.toLowerCase().trim()];
-    if (terms.some((t) => corpusMatchesTermOrSynonym(corpus, t))) {
-      score += 8;
+    const terms = (DOMAIN_TAXONOMY[dom.toLowerCase().trim()] ?? [dom]).map(stripAccents);
+    if (terms.some((t) => corpusMatchesTermOrSynonym(corpusNorm, t))) {
+      score += 6;
+      reasons.push(`Domain: ${dom}`);
       break;
     }
   }
 
-  // Prioritize collected & verified offers over externally_unverified links
+  // 5. Verified / full-content quality weighting
   if (offer.verificationLevel === 'verified') {
-    score += 12;
+    score += 10;
+    reasons.push('Verified ATS / Official');
   } else if (offer.collectionMode === 'collected') {
-    score += 7;
+    score += 6;
+    reasons.push('Collected full offer');
   }
 
-  if (offer.applicationEmail) score += 5;
-  if (offer.applicationUrl) score += 5;
-  if (offer.durationMonths !== null) score += 3;
-  if (offer.startDate !== null) score += 3;
+  if (offer.applicationEmail) score += 4;
+  if (offer.applicationUrl) score += 3;
+  if (offer.durationMonths !== null) score += 2;
+  if (offer.startDate !== null) score += 2;
 
-  return Math.max(0, Math.min(100, score));
+  return {
+    score: Math.max(0, Math.min(100, score)),
+    reasons,
+  };
 };
+
+export const computeRelevanceScore = (
+  offer: NormalizedScrapedOffer,
+  criteria: SearchCriteria
+): number => explainRelevanceMatch(offer, criteria).score;
 
 export const filterAndScoreOffers = (
   offers: readonly NormalizedScrapedOffer[],
@@ -409,8 +508,12 @@ export const filterAndScoreOffers = (
 ): readonly NormalizedScrapedOffer[] =>
   offers
     .filter((offer) => matchesMandatoryCriteria(offer, criteria))
-    .map((offer) => ({
-      ...offer,
-      matchScore: computeRelevanceScore(offer, criteria),
-    }))
+    .map((offer) => {
+      const { score, reasons } = explainRelevanceMatch(offer, criteria);
+      return {
+        ...offer,
+        matchScore: score,
+        matchReasons: reasons,
+      };
+    })
     .sort((a, b) => b.matchScore - a.matchScore);

@@ -75,31 +75,107 @@ export const AppStateProvider: React.FC<{ readonly children: React.ReactNode }> 
         return;
       }
 
-      dispatch({ type: 'SEARCH_STARTED' });
+      dispatch({ type: 'SEARCH_STARTED', sources: query.sources });
 
       try {
-        const res = await fetch('/api/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...query,
-            skills: query.skills && query.skills.length > 0 ? query.skills : state.profile.skills,
-            customSources: state.customSources,
-          }),
+        const requestBody = JSON.stringify({
+          ...query,
+          skills: query.skills && query.skills.length > 0 ? query.skills : state.profile.skills,
+          educationLevel:
+            query.educationLevel?.trim() || state.profile.degree?.trim() || undefined,
+          customSources: state.customSources,
+          profile: {
+            fullName: state.profile.fullName,
+            location: state.profile.location,
+            school: state.profile.school,
+            degree: state.profile.degree,
+            graduationYear: state.profile.graduationYear,
+            targetRole: state.profile.targetRole,
+            availability: state.profile.availability,
+            skills: state.profile.skills,
+            experiences: state.profile.experiences,
+            rawCvText: state.profile.rawCvText,
+          },
         });
 
-        if (!res.ok) {
-          const apiErr = await parseApiErrorResponse(res, 'search');
-          dispatch({ type: 'SEARCH_FAILED', error: apiErr });
-          return;
-        }
-
-        const payload = (await res.json()) as {
+        type SearchPayload = {
           offers?: Array<Parameters<typeof normalizeOffer>[0]>;
           groundingUrls?: Array<{ title: string; url: string }>;
           externalSearchLinks?: ExternalSearchLink[];
           sourceLogs?: SourceCollectionLog[];
+          queriesExecuted?: string[];
         };
+
+        let payload: SearchPayload | null = null;
+        const streamRes = await fetch('/api/search/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: requestBody,
+        });
+
+        if (
+          streamRes.ok &&
+          streamRes.body &&
+          (streamRes.headers.get('content-type') ?? '').includes('ndjson')
+        ) {
+          const reader = streamRes.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed) continue;
+              const evt = JSON.parse(trimmed) as {
+                type: string;
+                sources?: string[];
+                queriesExecuted?: string[];
+                source?: string;
+                log?: SourceCollectionLog;
+                result?: SearchPayload;
+                error?: string;
+                detail?: string;
+              };
+              if (evt.type === 'init') {
+                dispatch({
+                  type: 'SEARCH_PROGRESS_INIT',
+                  sources: evt.sources ?? [...query.sources],
+                  queriesExecuted: evt.queriesExecuted ?? [],
+                });
+              } else if (evt.type === 'source_start' && evt.source) {
+                dispatch({ type: 'SEARCH_SOURCE_STARTED', source: evt.source });
+              } else if (evt.type === 'source_done' && evt.log) {
+                dispatch({ type: 'SEARCH_SOURCE_COMPLETED', log: evt.log });
+              } else if (evt.type === 'complete' && evt.result) {
+                payload = evt.result;
+              } else if (evt.type === 'error') {
+                throw new Error(evt.detail || evt.error || 'Search stream failed');
+              }
+            }
+          }
+        } else {
+          const res = await fetch('/api/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: requestBody,
+          });
+          if (!res.ok) {
+            const apiErr = await parseApiErrorResponse(res, 'search');
+            dispatch({ type: 'SEARCH_FAILED', error: apiErr });
+            return;
+          }
+          payload = (await res.json()) as SearchPayload;
+        }
+
+        if (!payload) {
+          throw new Error('Empty response received from search engine.');
+        }
 
         const normalized = (payload.offers ?? [])
           .filter((item) => item && item.title && item.organization)
@@ -113,7 +189,7 @@ export const AppStateProvider: React.FC<{ readonly children: React.ReactNode }> 
               code: 'NO_RESULTS_FOUND',
               severity: ErrorSeverity.Api,
               message:
-                'No matching internships were scraped for these criteria. Try broader keywords, wider duration, or select Company Career Page / add a custom ATS board.',
+                'No matching internships were scraped for these criteria. Try broader keywords, wider duration, or select more platforms.',
               retryable: true,
               context: 'search',
             }),
@@ -127,6 +203,7 @@ export const AppStateProvider: React.FC<{ readonly children: React.ReactNode }> 
           groundingUrls: payload.groundingUrls ?? [],
           externalSearchLinks: payload.externalSearchLinks ?? [],
           sourceLogs: payload.sourceLogs ?? [],
+          queriesExecuted: payload.queriesExecuted ?? [],
         });
       } catch (err) {
         dispatch({
@@ -135,7 +212,7 @@ export const AppStateProvider: React.FC<{ readonly children: React.ReactNode }> 
         });
       }
     },
-    [state.searchQuery, state.customSources, state.profile.skills]
+    [state.searchQuery, state.customSources, state.profile]
   );
 
   const discoverChannelsForOffer = useCallback(async (offer: InternshipOffer) => {

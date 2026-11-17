@@ -15,6 +15,14 @@ const TRACKING_PARAMS = new Set([
   'gclid',
 ]);
 
+const normalizeSlug = (value: string): string =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
 export const canonicalizeOfferUrl = (rawUrl: string): string => {
   try {
     const parsed = new URL(rawUrl.trim());
@@ -32,25 +40,25 @@ export const canonicalizeOfferUrl = (rawUrl: string): string => {
 };
 
 const buildIdentityKey = (offer: NormalizedScrapedOffer): string => {
-  const org = offer.organization.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const title = offer.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const org = normalizeSlug(offer.organization);
+  const title = normalizeSlug(offer.title);
   const loc =
     offer.location === 'Unspecified'
       ? ''
-      : offer.location.toLowerCase().split(',')[0]?.replace(/[^a-z0-9]+/g, ' ').trim() || '';
+      : normalizeSlug(offer.location.split(',')[0] ?? '');
   return `${org}::${title}::${loc}`;
 };
 
 const buildOrgTitleKey = (offer: NormalizedScrapedOffer): string => {
-  const org = offer.organization.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  const title = offer.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const org = normalizeSlug(offer.organization);
+  const title = normalizeSlug(offer.title);
   return `${org}::${title}`;
 };
 
 const computeDescriptionJaccard = (a: string, b: string): number => {
   if (a.length < 60 || b.length < 60) return 0;
-  const tokA = new Set(a.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 4));
-  const tokB = new Set(b.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 4));
+  const tokA = new Set(normalizeSlug(a).split(' ').filter((w) => w.length >= 4));
+  const tokB = new Set(normalizeSlug(b).split(' ').filter((w) => w.length >= 4));
   if (tokA.size < 8 || tokB.size < 8) return 0;
   let intersection = 0;
   for (const w of tokA) {
@@ -76,6 +84,9 @@ const mergeOffers = (
   const mergedSkills = Array.from(new Set([...primary.requirements, ...secondary.requirements]));
   const mergedLanguages = Array.from(new Set([...primary.languages, ...secondary.languages]));
   const mergedSources = Array.from(new Set([...primary.sources, ...secondary.sources]));
+  const mergedMissions = Array.from(
+    new Set([...(primary.missions ?? []), ...(secondary.missions ?? [])])
+  ).slice(0, 6);
   const mergedAltUrls = Array.from(
     new Set(
       [primary.sourceUrl, secondary.sourceUrl, ...primary.alternateUrls, ...secondary.alternateUrls]
@@ -91,6 +102,7 @@ const mergeOffers = (
       secondary.description.length > primary.description.length
         ? secondary.description
         : primary.description,
+    missions: mergedMissions.length > 0 ? mergedMissions : undefined,
     location: primary.location === 'Unspecified' ? secondary.location : primary.location,
     duration: primary.duration ?? secondary.duration,
     durationMonths: primary.durationMonths ?? secondary.durationMonths,
@@ -152,7 +164,7 @@ export const deduplicateScrapedOffers = (
       const idx = result.findIndex(
         (existing) =>
           existing.collectionMode === 'collected' &&
-          existing.organization.toLowerCase() === offer.organization.toLowerCase() &&
+          normalizeSlug(existing.organization) === normalizeSlug(offer.organization) &&
           computeDescriptionJaccard(existing.description, offer.description) >= 0.72
       );
       if (idx !== -1) {

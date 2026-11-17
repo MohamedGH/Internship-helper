@@ -15,8 +15,12 @@ const TECH_SKILLS_DICTIONARY = [
   'Vue',
   'Angular',
   'Node.js',
+  'PHP',
+  'Laravel',
+  'Symfony',
   'Python',
   'Java',
+  'Spring',
   'Go',
   'Rust',
   'C++',
@@ -25,13 +29,18 @@ const TECH_SKILLS_DICTIONARY = [
   'PostgreSQL',
   'MySQL',
   'MongoDB',
+  'Redis',
+  'Prisma',
   'Docker',
   'Kubernetes',
+  'Linux',
   'AWS',
   'GCP',
   'Azure',
   'PyTorch',
   'TensorFlow',
+  'Pandas',
+  'Scikit-learn',
   'Machine Learning',
   'Deep Learning',
   'NLP',
@@ -48,6 +57,7 @@ const TECH_SKILLS_DICTIONARY = [
   'Git',
   'CI/CD',
   'Tailwind',
+  'Figma',
 ];
 
 export const extractSkillsFromCorpus = (
@@ -63,6 +73,8 @@ export const extractSkillsFromCorpus = (
     const token = skill.toLowerCase();
     if (token === 'go') {
       if (/\bgolang\b|\bgo\b/.test(corpus)) result.add('Go');
+    } else if (token === 'php') {
+      if (/\bphp\b/i.test(corpus)) result.add('PHP');
     } else if (token === 'c++' || token === 'c#') {
       if (lower.includes(token)) result.add(skill);
     } else if (lower.includes(token)) {
@@ -70,7 +82,33 @@ export const extractSkillsFromCorpus = (
     }
   }
 
-  return Array.from(result).slice(0, 12);
+  return Array.from(result).slice(0, 14);
+};
+
+export const extractMissionsFromDescription = (
+  explicitMissions: readonly string[] | undefined,
+  description: string
+): readonly string[] => {
+  if (explicitMissions && explicitMissions.length > 0) {
+    return explicitMissions.map((m) => m.trim()).filter((m) => m.length >= 8).slice(0, 6);
+  }
+  if (!description || description.length < 40) return [];
+
+  const candidates = description
+    .split(/(?:[•●▪\-–]\s+|\r?\n+)/)
+    .map((s) => s.replace(/\s+/g, ' ').trim())
+    .filter(
+      (s) =>
+        s.length >= 18 &&
+        s.length <= 200 &&
+        !/^(about|à propos|company|entreprise|benefits|avantages|salary|rémunération)/i.test(s)
+    );
+
+  if (candidates.length >= 2) {
+    return candidates.slice(0, 5);
+  }
+
+  return [];
 };
 
 export const normalizeWorkMode = (
@@ -114,7 +152,9 @@ const extractEducationLevel = (
   corpus: string
 ): string | null => {
   if (explicit?.trim()) return explicit.trim();
-  const match = corpus.match(/\b(bac\s*\+\s*[2-5]|master\s*[12]?|m[12]\b|miage|licence|bachelor|ingénieur|engineering student)\b/i);
+  const match = corpus.match(
+    /\b(bac\s*\+\s*[2-5]|l[23]\b|m[12]\b|master\s*[12]?|miage|but\b|licence(?:\s+3)?|bachelor|ingénieur|engineering student)\b/i
+  );
   return match ? match[0].trim() : null;
 };
 
@@ -123,7 +163,7 @@ const extractExperienceLevel = (
   corpus: string
 ): string | null => {
   if (explicit?.trim()) return explicit.trim();
-  if (/\b(sans expérience|no experience|débutant|junior|intern|stage)\b/i.test(corpus)) {
+  if (/\b(sans expérience|no experience|débutant|junior|intern|stage|entry[- ]?level)\b/i.test(corpus)) {
     return 'Junior / Internship';
   }
   const yearsMatch = corpus.match(/\b([3-9]|1\d)\s*\+?\s*(?:ans d['’]expérience|years? of experience)\b/i);
@@ -186,6 +226,7 @@ export const normalizeScrapedOffer = (
   const workMode = normalizeWorkMode(raw.workMode, `${location} ${corpus}`);
   const skills = extractSkillsFromCorpus(raw.skills, corpus);
   const languages = extractLanguagesFromCorpus(raw.languages, corpus);
+  const missions = extractMissionsFromDescription(raw.missions, description);
   const educationLevel = extractEducationLevel(raw.educationLevel, corpus);
   const experienceLevel = extractExperienceLevel(raw.experienceLevel, corpus);
 
@@ -219,6 +260,7 @@ export const normalizeScrapedOffer = (
     organization,
     organizationSummary: raw.organizationSummary?.trim() || null,
     description: description || '',
+    missions: missions.length > 0 ? missions : undefined,
     contentAccessible,
     location,
     workMode,

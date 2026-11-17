@@ -3,6 +3,10 @@ import { deduplicateScrapedOffers } from './filters/deduplicator.ts';
 import { getJobBoardPolicySnapshots } from './jobboards/jobBoardSearch.ts';
 import { WebSearchDiscoveryProvider } from './jobboards/searchDiscoveryProvider.ts';
 import { normalizeScrapedOffer } from './normalizer.ts';
+import {
+  buildMultipliedQueries,
+  enrichCriteriaWithProfile,
+} from './platforms/queryPlanner.ts';
 import { resolveConnectorsForCriteria } from './scraperRegistry.ts';
 import {
   ConnectorExecutionResult,
@@ -22,6 +26,8 @@ export interface EngineRunOptions {
   readonly fetchFn?: typeof fetch;
   readonly discoveryProvider?: WebSearchDiscoveryProvider | null;
   readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly onConnectorStart?: (connector: ScraperConnector) => void;
+  readonly onConnectorComplete?: (log: SourceCollectionLog, result: ConnectorExecutionResult) => void;
 }
 
 const runWithConcurrency = async <T, R>(
@@ -44,12 +50,21 @@ const runWithConcurrency = async <T, R>(
   return results;
 };
 
+const toLogStatus = (res: ConnectorExecutionResult): SourceCollectionLog['status'] => {
+  if (res.status === 'ok' && res.offers.length === 0) {
+    return 'empty';
+  }
+  return res.status;
+};
+
 const runConnectorSafely = async (
   connector: ScraperConnector,
   criteria: SearchCriteria,
-  timeoutMs: number
+  timeoutMs: number,
+  options: EngineRunOptions
 ): Promise<ConnectorExecutionResult> => {
   const started = Date.now();
+  options.onConnectorStart?.(connector);
   try {
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
       setTimeout(() => reject(new Error(`Connector timeout after ${timeoutMs}ms`)), timeoutMs);
@@ -68,6 +83,19 @@ const runConnectorSafely = async (
         message: res.message,
       },
     });
+    options.onConnectorComplete?.(
+      {
+        source: res.source,
+        connector: res.connector,
+        accessMode: res.accessMode,
+        status: toLogStatus(res),
+        collectedCount: res.offers.length,
+        matchedCount: 0,
+        durationMs: res.durationMs,
+        message: res.message,
+      },
+      res
+    );
     return res;
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown connector error';
@@ -78,7 +106,7 @@ const runConnectorSafely = async (
       connector: connector.id,
       detail: { error: msg },
     });
-    return {
+    const failRes: ConnectorExecutionResult = {
       source: connector.sourceName,
       connector: connector.id,
       status: 'error',
@@ -87,16 +115,31 @@ const runConnectorSafely = async (
       durationMs: Date.now() - started,
       message: msg,
     };
+    options.onConnectorComplete?.(
+      {
+        source: failRes.source,
+        connector: failRes.connector,
+        status: 'error',
+        collectedCount: 0,
+        matchedCount: 0,
+        durationMs: failRes.durationMs,
+        message: msg,
+      },
+      failRes
+    );
+    return failRes;
   }
 };
 
 export const runScrapingSearch = async (
-  criteria: SearchCriteria,
+  rawCriteria: SearchCriteria,
   options: EngineRunOptions = {}
 ): Promise<ScrapingEngineResponse> => {
   const engineStart = Date.now();
-  const concurrency = options.concurrency ?? 3;
-  const connectorTimeoutMs = options.connectorTimeoutMs ?? 12_000;
+  const criteria = enrichCriteriaWithProfile(rawCriteria);
+  const queriesExecuted = buildMultipliedQueries(criteria, { maxQueries: 8 }).map((q) => q.query);
+  const concurrency = options.concurrency ?? 4;
+  const connectorTimeoutMs = options.connectorTimeoutMs ?? 15_000;
 
   const connectors =
     options.connectorsOverride ??
@@ -109,7 +152,7 @@ export const runScrapingSearch = async (
   const executionResults = await runWithConcurrency(
     connectors,
     concurrency,
-    (connector) => runConnectorSafely(connector, criteria, connectorTimeoutMs)
+    (connector) => runConnectorSafely(connector, criteria, connectorTimeoutMs, options)
   );
 
   const collectedAt = new Date().toISOString();
@@ -141,7 +184,7 @@ export const runScrapingSearch = async (
     source: res.source,
     connector: res.connector,
     accessMode: res.accessMode,
-    status: res.status,
+    status: toLogStatus(res),
     collectedCount: res.offers.length,
     matchedCount: matchedBySource.get(res.source) ?? 0,
     durationMs: res.durationMs,
@@ -151,7 +194,7 @@ export const runScrapingSearch = async (
   const uniqueSourcesSeen = new Set<string>();
   const groundingUrls: Array<{ title: string; url: string }> = [];
   for (const offer of filtered) {
-    if (!uniqueSourcesSeen.has(offer.sourceUrl) && groundingUrls.length < 6) {
+    if (!uniqueSourcesSeen.has(offer.sourceUrl) && groundingUrls.length < 8) {
       uniqueSourcesSeen.add(offer.sourceUrl);
       groundingUrls.push({
         title: `${offer.organization} — ${offer.title}`,
@@ -169,6 +212,7 @@ export const runScrapingSearch = async (
     event: 'search_engine_completed',
     detail: {
       keywords: criteria.keywords,
+      queriesExecutedCount: queriesExecuted.length,
       totalCollected: normalizedOffers.length,
       afterDeduplication: deduplicated.length,
       afterFiltering: filtered.length,
@@ -184,6 +228,7 @@ export const runScrapingSearch = async (
     externalSearchLinks,
     sourceLogs,
     jobBoardPolicies: getJobBoardPolicySnapshots(options.env),
+    queriesExecuted,
     stats: {
       totalCollected: normalizedOffers.length,
       afterDeduplication: deduplicated.length,

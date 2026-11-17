@@ -253,3 +253,65 @@ test('serializePersistedState and hydratePersistedState round-trip cleanly inclu
   assert.equal(fallback.offers.length, createInitialState().offers.length);
   assert.equal(fallback.customSources.length, createInitialState().customSources.length);
 });
+
+test('appReducer tracks live streaming per-platform progress and hydratePersistedState migrates new enabled platforms', () => {
+  let state = createInitialState();
+  assert.equal(state.customSources.length, 19);
+  assert.equal(state.searchQuery.sources.length, 14);
+
+  state = appReducer(state, {
+    type: 'SEARCH_STARTED',
+    sources: ['Company Career Page', 'Remote OK', 'AFJV'],
+  });
+  assert.equal(state.isSearching, true);
+  assert.equal(state.livePlatformStatuses['Remote OK'], 'pending');
+
+  state = appReducer(state, {
+    type: 'SEARCH_PROGRESS_INIT',
+    sources: ['Company Career Page', 'Remote OK', 'AFJV'],
+    queriesExecuted: ['stage développeur web Lille', 'react intern'],
+  });
+  assert.equal(state.lastQueriesExecuted.length, 2);
+
+  state = appReducer(state, {
+    type: 'SEARCH_SOURCE_STARTED',
+    source: 'Remote OK',
+  });
+  assert.equal(state.livePlatformStatuses['Remote OK'], 'running');
+
+  state = appReducer(state, {
+    type: 'SEARCH_SOURCE_COMPLETED',
+    log: {
+      source: 'Remote OK',
+      connector: 'remoteok_official_api',
+      accessMode: 'official_api',
+      status: 'ok',
+      collectedCount: 25,
+      matchedCount: 4,
+      durationMs: 180,
+      message: 'Collected 25 jobs',
+    },
+  });
+  assert.equal(state.livePlatformStatuses['Remote OK'], 'ok');
+  assert.equal(state.lastSourceLogs.length, 1);
+
+  // Returning user saved payload from earlier build should pick up newly added enabled platforms
+  const legacySaved = JSON.stringify({
+    profile: state.profile,
+    searchQuery: {
+      ...state.searchQuery,
+      sources: ['Company Career Page', 'Welcome to the Jungle'],
+    },
+    customSources: state.customSources.filter(
+      (s) => s.id === 'src_company_career' || s.id === 'src_wttj'
+    ),
+    offers: [],
+    dossiers: {},
+  });
+  const migrated = hydratePersistedState(legacySaved);
+  assert.equal(migrated.customSources.length, 19);
+  assert.ok(migrated.searchQuery.sources.includes('Remote OK'));
+  assert.ok(migrated.searchQuery.sources.includes('Arbeitnow'));
+  assert.ok(migrated.searchQuery.sources.includes('AFJV'));
+});
+

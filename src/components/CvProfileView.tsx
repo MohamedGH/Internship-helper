@@ -78,7 +78,7 @@ export const CvProfileView: React.FC = () => {
               Candidate CV &amp; Profile
             </h1>
             <p className="text-sm text-slate-600 mt-0.5">
-              Used automatically to adapt every lettre de motivation and highlight matching CV skills.
+              Powers multi-platform internship search queries and adapts every cover letter to your CV.
             </p>
           </div>
         </div>
@@ -136,6 +136,20 @@ export const CvProfileView: React.FC = () => {
               placeholder="+33 6 ..."
               value={draft.phone}
               onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+              className="w-full h-11 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="cv-location" className="block text-xs font-medium text-slate-700 mb-1">
+              Location / Priority City
+            </label>
+            <input
+              id="cv-location"
+              type="text"
+              placeholder="e.g. Lille, Paris, Lyon"
+              value={draft.location}
+              onChange={(e) => setDraft({ ...draft, location: e.target.value })}
               className="w-full h-11 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"
             />
           </div>

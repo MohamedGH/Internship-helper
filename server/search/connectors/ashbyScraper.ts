@@ -23,8 +23,10 @@ export const DEFAULT_ASHBY_BOARDS: readonly AshbyTargetBoard[] = [
   { boardName: 'qonto', organization: 'Qonto' },
   { boardName: 'pennylane', organization: 'Pennylane' },
   { boardName: 'dust', organization: 'Dust' },
-  { boardName: 'huggingface', organization: 'Hugging Face' },
-  { boardName: 'pigment', organization: 'Pigment' },
+  { boardName: 'doctolib', organization: 'Doctolib' },
+  { boardName: 'backmarket', organization: 'Back Market' },
+  { boardName: 'ledger', organization: 'Ledger' },
+  { boardName: 'voodoo', organization: 'Voodoo' },
 ];
 
 const ashbyCache = createTtlCache<readonly RawScrapedOffer[]>(5 * 60 * 1000);

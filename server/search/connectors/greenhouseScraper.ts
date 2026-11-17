@@ -22,10 +22,6 @@ export const DEFAULT_GREENHOUSE_BOARDS: readonly GreenhouseTargetBoard[] = [
   { token: 'mirakl', organization: 'Mirakl' },
   { token: 'dataiku', organization: 'Dataiku' },
   { token: 'algolia', organization: 'Algolia' },
-  { token: 'doctolib', organization: 'Doctolib' },
-  { token: 'contentsquare', organization: 'Contentsquare' },
-  { token: 'spendesk', organization: 'Spendesk' },
-  { token: 'payfit', organization: 'PayFit' },
 ];
 
 const greenhouseCache = createTtlCache<readonly RawScrapedOffer[]>(5 * 60 * 1000);

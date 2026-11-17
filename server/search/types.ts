@@ -54,6 +54,19 @@ export interface CustomSourceInput {
   readonly isDefault?: boolean;
 }
 
+export interface CandidateProfileContext {
+  readonly fullName?: string;
+  readonly location?: string;
+  readonly school?: string;
+  readonly degree?: string;
+  readonly graduationYear?: string;
+  readonly targetRole?: string;
+  readonly availability?: string;
+  readonly skills?: readonly string[];
+  readonly experiences?: readonly string[];
+  readonly rawCvText?: string;
+}
+
 export interface SearchCriteria {
   readonly keywords: string;
   readonly domains?: readonly string[];
@@ -73,6 +86,7 @@ export interface SearchCriteria {
   readonly customSources?: readonly CustomSourceInput[];
   readonly includeUnspecifiedDuration?: boolean;
   readonly includeUnspecifiedDates?: boolean;
+  readonly profile?: CandidateProfileContext;
 }
 
 export interface RawScrapedOffer {
@@ -92,6 +106,7 @@ export interface RawScrapedOffer {
   readonly isExpired?: boolean;
   readonly skills?: readonly string[];
   readonly languages?: readonly string[];
+  readonly missions?: readonly string[];
   readonly educationLevel?: string | null;
   readonly experienceLevel?: string | null;
   readonly description?: string | null;
@@ -116,6 +131,7 @@ export interface NormalizedScrapedOffer {
   readonly organization: string;
   readonly organizationSummary: string | null;
   readonly description: string;
+  readonly missions?: readonly string[];
   readonly contentAccessible: boolean;
   readonly location: string;
   readonly workMode: WorkModeValue;
@@ -145,6 +161,7 @@ export interface NormalizedScrapedOffer {
   readonly verificationStatus: VerificationStatus;
   readonly verificationLevel: VerificationLevel;
   readonly matchScore: number;
+  readonly matchReasons?: readonly string[];
 }
 
 export interface ExternalSearchLink {
@@ -155,11 +172,20 @@ export interface ExternalSearchLink {
   readonly accessMode?: JobBoardAccessMode;
 }
 
+export type SourceExecutionStatus =
+  | 'ok'
+  | 'empty'
+  | 'cached'
+  | 'disabled_policy'
+  | 'robots_blocked'
+  | 'link_only'
+  | 'error';
+
 export interface SourceCollectionLog {
   readonly source: string;
   readonly connector: string;
   readonly accessMode?: JobBoardAccessMode | 'ats_api' | 'custom_html';
-  readonly status: 'ok' | 'cached' | 'disabled_policy' | 'robots_blocked' | 'link_only' | 'error';
+  readonly status: SourceExecutionStatus;
   readonly collectedCount: number;
   readonly matchedCount: number;
   readonly durationMs: number;
@@ -170,7 +196,7 @@ export interface ConnectorExecutionResult {
   readonly source: string;
   readonly connector: string;
   readonly accessMode?: JobBoardAccessMode | 'ats_api' | 'custom_html';
-  readonly status: SourceCollectionLog['status'];
+  readonly status: SourceExecutionStatus;
   readonly offers: readonly RawScrapedOffer[];
   readonly externalSearchLinks: readonly ExternalSearchLink[];
   readonly durationMs: number;
@@ -207,6 +233,7 @@ export interface ScrapingEngineResponse {
   readonly externalSearchLinks: readonly ExternalSearchLink[];
   readonly sourceLogs: readonly SourceCollectionLog[];
   readonly jobBoardPolicies?: readonly JobBoardPolicySnapshot[];
+  readonly queriesExecuted?: readonly string[];
   readonly stats: {
     readonly totalCollected: number;
     readonly afterDeduplication: number;
