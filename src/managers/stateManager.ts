@@ -15,7 +15,6 @@ import {
 import { errorReducer } from './errorManager';
 import {
   DEFAULT_SEARCH_QUERY,
-  DEFAULT_SEED_OFFERS,
   deduplicateOffers,
   filterOffers,
 } from '../modules/sourceAggregator';
@@ -26,44 +25,24 @@ import {
   toggleCustomSource,
   updateCustomSource,
 } from '../modules/customSources';
-import { buildPreparedDossier } from '../modules/dossierComposer';
 
-export const DEFAULT_AVATAR_PATH = '/src/assets/images/avatar_candidate_profile_1794841530446.jpg';
-
-export const DEFAULT_CANDIDATE_PROFILE: CandidateProfile = {
-  id: 'cand_default',
-  fullName: 'Lucas Bernard',
-  email: 'lucas.bernard@polytech-etu.fr',
-  phone: '+33 6 45 78 90 12',
-  location: 'Paris, France',
-  school: 'CentraleSupélec / Université Paris-Saclay',
-  degree: 'MSc Software Engineering & AI Systems',
-  graduationYear: '2027',
-  targetRole: 'Full-Stack / Frontend Engineering Intern (Stage PFE)',
-  availability: 'February 2027 — 6 months',
-  portfolioUrl: 'https://lucasbernard.dev',
-  linkedinUrl: 'https://linkedin.com/in/lucas-bernard-eng',
-  skills: [
-    'TypeScript',
-    'React',
-    'Node.js',
-    'Python',
-    'Tailwind CSS',
-    'PostgreSQL',
-    'REST APIs',
-    'Automated Testing',
-  ],
-  experiences: [
-    'Built a real-time analytics web app in React, TypeScript, and Express (4,000+ monthly active student users)',
-    'Software Engineering Intern at Capgemini Invent — implemented REST microservices and unit test suites in Python & Node.js',
-  ],
-  rawCvText: `Lucas Bernard — MSc Software Engineering (CentraleSupélec, 2027)
-Looking for a 6-month end-of-studies internship (Stage PFE) starting February 2027 in Paris or Remote.
-Technical Skills: TypeScript, React, Node.js, Python, Tailwind CSS, PostgreSQL, REST APIs, Automated Testing.
-Experience:
-- Software Engineering Intern, Capgemini Invent (4 months): Built REST APIs and automated integration tests.
-- Student Lead Developer, Campus Hub: Shipped responsive React + TypeScript portal for 4,000+ students.`,
-  avatarUrl: DEFAULT_AVATAR_PATH,
+export const EMPTY_CANDIDATE_PROFILE: CandidateProfile = {
+  id: 'cand_local',
+  fullName: '',
+  email: '',
+  phone: '',
+  location: '',
+  school: '',
+  degree: '',
+  graduationYear: '',
+  targetRole: '',
+  availability: '',
+  portfolioUrl: '',
+  linkedinUrl: '',
+  skills: [],
+  experiences: [],
+  rawCvText: '',
+  avatarUrl: '',
 };
 
 export type AppAction =
@@ -117,43 +96,36 @@ export type AppAction =
   | { readonly type: 'CLEAR_NOTICE' };
 
 export const createInitialState = (
-  seedProfile: CandidateProfile = DEFAULT_CANDIDATE_PROFILE,
-  seedOffers: readonly InternshipOffer[] = DEFAULT_SEED_OFFERS,
-  seedCustomSources: readonly CustomSource[] = DEFAULT_BUILTIN_SOURCES
-): AppState => {
-  const firstReadyOffer = seedOffers[0];
-  const initialDossiers: Record<string, PreparedDossier> = firstReadyOffer
-    ? { [firstReadyOffer.id]: buildPreparedDossier(firstReadyOffer, seedProfile, 'fr', 'professional') }
-    : {};
-
-  return {
-    profile: seedProfile,
-    searchQuery: {
-      ...DEFAULT_SEARCH_QUERY,
-      sources: seedCustomSources.filter((s) => s.enabled).map((s) => s.name),
-    },
-    filters: {
-      sourceFilter: 'all',
-      channelFilter: 'all',
-      textFilter: '',
-      minDurationFilter: 0,
-      maxDurationFilter: 0,
-      dateRangeFrom: '',
-      dateRangeTo: '',
-    },
-    customSources: seedCustomSources,
-    offers: seedOffers,
-    dossiers: initialDossiers,
-    isSearching: false,
-    isPreparingOfferId: null,
-    isDiscoveringChannelsId: null,
-    lastSearchGroundingUrls: [],
-    lastExternalSearchLinks: [],
-    lastSourceLogs: [],
-    errors: [],
-    lastDispatchNotice: null,
-  };
-};
+  initialProfile: CandidateProfile = EMPTY_CANDIDATE_PROFILE,
+  initialOffers: readonly InternshipOffer[] = [],
+  initialCustomSources: readonly CustomSource[] = DEFAULT_BUILTIN_SOURCES
+): AppState => ({
+  profile: initialProfile,
+  searchQuery: {
+    ...DEFAULT_SEARCH_QUERY,
+    sources: initialCustomSources.filter((s) => s.enabled).map((s) => s.name),
+  },
+  filters: {
+    sourceFilter: 'all',
+    channelFilter: 'all',
+    textFilter: '',
+    minDurationFilter: 0,
+    maxDurationFilter: 0,
+    dateRangeFrom: '',
+    dateRangeTo: '',
+  },
+  customSources: initialCustomSources,
+  offers: initialOffers,
+  dossiers: {},
+  isSearching: false,
+  isPreparingOfferId: null,
+  isDiscoveringChannelsId: null,
+  lastSearchGroundingUrls: [],
+  lastExternalSearchLinks: [],
+  lastSourceLogs: [],
+  errors: [],
+  lastDispatchNotice: null,
+});
 
 export const appReducer = (state: AppState, action: AppAction): AppState => {
   switch (action.type) {
@@ -275,18 +247,19 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
         lastDispatchNotice: null,
       };
 
-    case 'SEARCH_SUCCEEDED':
+    case 'SEARCH_SUCCEEDED': {
+      const preservedOffers = state.offers.filter(
+        (o) => o.status !== ApplicationStatus.Discovered || Boolean(state.dossiers[o.id])
+      );
       return {
         ...state,
         isSearching: false,
-        offers:
-          action.offers.length > 0
-            ? deduplicateOffers(action.offers, state.offers)
-            : state.offers,
+        offers: deduplicateOffers(action.offers, preservedOffers),
         lastSearchGroundingUrls: action.groundingUrls,
         lastExternalSearchLinks: action.externalSearchLinks ?? [],
         lastSourceLogs: action.sourceLogs ?? [],
       };
+    }
 
     case 'SEARCH_FAILED':
       return {
@@ -516,7 +489,7 @@ export const selectPipelineCounts = (state: AppState) => {
   return { discovered, ready, sent, channelsVerified };
 };
 
-const STORAGE_KEY = 'stagepilot_app_state_v1';
+const STORAGE_KEY = 'stagepilot_app_state_v2';
 
 export const serializePersistedState = (state: AppState): string =>
   JSON.stringify({
@@ -538,13 +511,13 @@ export const hydratePersistedState = (raw: string | null): AppState => {
     >;
     return {
       ...base,
-      profile: parsed.profile?.fullName ? parsed.profile : base.profile,
+      profile: parsed.profile && typeof parsed.profile === 'object' ? parsed.profile : base.profile,
       searchQuery: parsed.searchQuery?.keywords ? parsed.searchQuery : base.searchQuery,
       customSources:
         Array.isArray(parsed.customSources) && parsed.customSources.length > 0
           ? parsed.customSources
           : base.customSources,
-      offers: Array.isArray(parsed.offers) && parsed.offers.length > 0 ? parsed.offers : base.offers,
+      offers: Array.isArray(parsed.offers) ? parsed.offers : base.offers,
       dossiers: parsed.dossiers && typeof parsed.dossiers === 'object' ? parsed.dossiers : base.dossiers,
     };
   } catch {

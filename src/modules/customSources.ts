@@ -57,8 +57,8 @@ export const DEFAULT_BUILTIN_SOURCES: readonly CustomSource[] = [
   {
     id: 'src_company_career',
     name: SourceProvider.CompanyCareer,
-    baseUrl: 'https://careers.google.com',
-    description: 'Direct enterprise career portals, Lever, Greenhouse, and Ashby',
+    baseUrl: 'https://boards-api.greenhouse.io',
+    description: 'Direct enterprise ATS feeds: Greenhouse, Lever, and Ashby public APIs',
     enabled: true,
     isDefault: true,
     createdAt: '2026-01-01T00:00:00.000Z',

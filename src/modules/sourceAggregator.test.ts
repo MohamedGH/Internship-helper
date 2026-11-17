@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { ChannelType, SourceProvider, WorkMode } from '../types/domain';
 import {
   ALL_SOURCES,
-  DEFAULT_SEED_OFFERS,
   deduplicateOffers,
   filterOffers,
   isOfferWithinDateRange,
@@ -14,25 +13,60 @@ import {
   validateSearchQuery,
 } from './sourceAggregator';
 
+const buildOffersSet = () => [
+  normalizeOffer(
+    {
+      id: 'o_1',
+      title: 'Software Engineer Intern',
+      organization: 'Company A',
+      location: 'Paris',
+      workMode: 'Hybrid',
+      duration: '6 months',
+      startDate: '2027-02-01',
+      source: 'WTTJ',
+      sourceUrl: 'https://example.org/jobs/1',
+      applicationEmail: 'jobs@companya.example',
+      requirements: ['React', 'TypeScript'],
+    },
+    0
+  ),
+  normalizeOffer(
+    {
+      id: 'o_2',
+      title: 'Data Engineer Intern',
+      organization: 'Company B',
+      location: 'Lyon',
+      workMode: 'On-site',
+      duration: '4 months',
+      startDate: '2027-06-01',
+      source: 'Indeed',
+      sourceUrl: 'https://example.org/jobs/2',
+      applicationFormUrl: 'https://jobs.lever.co/companyb/2',
+      requirements: ['Python', 'SQL'],
+    },
+    1
+  ),
+];
+
 test('normalizeOffer maps raw search payload into clean InternshipOffer with channels and duration', () => {
   const offer = normalizeOffer(
     {
       title: 'Stage Data Engineer',
-      organization: 'BlaBlaCar',
+      organization: 'OrgAlpha',
       location: 'Paris',
       workMode: 'Hybride',
       duration: '4 à 6 mois',
       startDate: '2027-03-01',
       endDate: '2027-08-31',
       source: 'WTTJ',
-      applicationEmail: 'data-stages@blablacar.com',
-      applicationFormUrl: 'https://jobs.lever.co/blablacar/1',
+      applicationEmail: 'data-stages@orgalpha.example',
+      applicationFormUrl: 'https://jobs.lever.co/orgalpha/1',
       requirements: ['Python', 'SQL', 'Spark'],
     },
     0
   );
 
-  assert.equal(offer.organization, 'BlaBlaCar');
+  assert.equal(offer.organization, 'OrgAlpha');
   assert.equal(offer.workMode, WorkMode.Hybrid);
   assert.equal(offer.durationMonths, 6);
   assert.equal(offer.startDate, '2027-03-01');
@@ -90,7 +124,7 @@ test('isOfferWithinDateRange evaluates start date within specified range', () =>
 });
 
 test('deduplicateOffers preserves existing offers and prepends only unique new offers', () => {
-  const existing = DEFAULT_SEED_OFFERS.slice(0, 2);
+  const existing = buildOffersSet();
   const duplicate = normalizeOffer(
     {
       title: existing[0].title,
@@ -101,18 +135,20 @@ test('deduplicateOffers preserves existing offers and prepends only unique new o
   const fresh = normalizeOffer(
     {
       title: 'Stage ML Ops',
-      organization: 'Hugging Face',
+      organization: 'OrgGamma',
     },
     1
   );
 
   const merged = deduplicateOffers([duplicate, fresh], existing);
   assert.equal(merged.length, 3);
-  assert.equal(merged[0].organization, 'Hugging Face');
+  assert.equal(merged[0].organization, 'OrgGamma');
 });
 
 test('filterOffers filters by source, channel type, text query, duration, and date range', () => {
-  const bySource = filterOffers(DEFAULT_SEED_OFFERS, {
+  const sampleSet = buildOffersSet();
+
+  const bySource = filterOffers(sampleSet, {
     sourceFilter: SourceProvider.WelcomeToTheJungle,
     channelFilter: 'all',
     minDurationFilter: 0,
@@ -122,22 +158,21 @@ test('filterOffers filters by source, channel type, text query, duration, and da
     textFilter: '',
   });
   assert.equal(bySource.length, 1);
-  assert.equal(bySource[0].organization, 'Alan');
+  assert.equal(bySource[0].organization, 'Company A');
 
-  const byEmailAndText = filterOffers(DEFAULT_SEED_OFFERS, {
+  const byEmailAndText = filterOffers(sampleSet, {
     sourceFilter: 'all',
     channelFilter: ChannelType.Email,
     minDurationFilter: 0,
     maxDurationFilter: 0,
     dateRangeFrom: '',
     dateRangeTo: '',
-    textFilter: 'Qonto',
+    textFilter: 'Company A',
   });
   assert.equal(byEmailAndText.length, 1);
-  assert.equal(byEmailAndText[0].organization, 'Qonto');
+  assert.equal(byEmailAndText[0].organization, 'Company A');
 
-  // Filter 4-month offers only (Datadog)
-  const byDuration = filterOffers(DEFAULT_SEED_OFFERS, {
+  const byDuration = filterOffers(sampleSet, {
     sourceFilter: 'all',
     channelFilter: 'all',
     minDurationFilter: 4,
@@ -147,20 +182,19 @@ test('filterOffers filters by source, channel type, text query, duration, and da
     textFilter: '',
   });
   assert.equal(byDuration.length, 1);
-  assert.equal(byDuration[0].organization, 'Datadog');
+  assert.equal(byDuration[0].organization, 'Company B');
 
-  // Filter offers starting in June or later (Back Market starts 2027-06-01)
-  const byDateRange = filterOffers(DEFAULT_SEED_OFFERS, {
+  const byDateRange = filterOffers(sampleSet, {
     sourceFilter: 'all',
     channelFilter: 'all',
     minDurationFilter: 0,
     maxDurationFilter: 0,
-    dateRangeFrom: '2027-06-01',
+    dateRangeFrom: '2027-05-01',
     dateRangeTo: '2027-08-31',
     textFilter: '',
   });
   assert.equal(byDateRange.length, 1);
-  assert.equal(byDateRange[0].organization, 'Back Market');
+  assert.equal(byDateRange[0].organization, 'Company B');
 });
 
 test('validateSearchQuery rejects empty keywords, zero sources, and invalid duration or date ranges', () => {
@@ -194,7 +228,6 @@ test('validateSearchQuery rejects empty keywords, zero sources, and invalid dura
     false
   );
 
-  // minDuration > maxDuration should be rejected
   const durationCheck = validateSearchQuery({
     keywords: 'React Stage',
     location: 'Paris',
@@ -209,7 +242,6 @@ test('validateSearchQuery rejects empty keywords, zero sources, and invalid dura
   assert.equal(durationCheck.valid, false);
   assert.match(durationCheck.message ?? '', /duration/i);
 
-  // startDateFrom > startDateTo should be rejected
   const dateCheck = validateSearchQuery({
     keywords: 'React Stage',
     location: 'Paris',
@@ -224,7 +256,6 @@ test('validateSearchQuery rejects empty keywords, zero sources, and invalid dura
   assert.equal(dateCheck.valid, false);
   assert.match(dateCheck.message ?? '', /date/i);
 
-  // Valid search query passes
   assert.equal(
     validateSearchQuery({
       keywords: 'React Stage',

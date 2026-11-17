@@ -53,7 +53,7 @@ Open **Add Custom Source** from the Discover search bar to configure:
 
 ```bash
 npm install
-npm test        # Runs unit & fixture tests across src/ and server/search/
+npm test        # Runs unit & integration tests across src/ and server/search/
 npm run lint    # TypeScript type-check (tsc --noEmit)
 npm run dev     # Starts Express API + Vite dev server on http://localhost:3000
 ```

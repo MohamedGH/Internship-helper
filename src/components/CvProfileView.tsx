@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Check, RotateCcw, Save, User } from 'lucide-react';
 import { CandidateProfile, ErrorSeverity } from '../types/domain';
 import { useAppState } from '../managers/AppStateContext';
-import { DEFAULT_CANDIDATE_PROFILE } from '../managers/stateManager';
+import { EMPTY_CANDIDATE_PROFILE } from '../managers/stateManager';
 import { createAppError } from '../managers/errorManager';
 
 export const CvProfileView: React.FC = () => {
@@ -46,11 +46,11 @@ export const CvProfileView: React.FC = () => {
     setTimeout(() => setSavedNotice(false), 2500);
   };
 
-  const handleResetSample = () => {
-    setDraft(DEFAULT_CANDIDATE_PROFILE);
-    setSkillsText(DEFAULT_CANDIDATE_PROFILE.skills.join(', '));
-    setExperiencesText(DEFAULT_CANDIDATE_PROFILE.experiences.join('\n'));
-    updateProfile(DEFAULT_CANDIDATE_PROFILE);
+  const handleResetProfile = () => {
+    setDraft(EMPTY_CANDIDATE_PROFILE);
+    setSkillsText('');
+    setExperiencesText('');
+    updateProfile(EMPTY_CANDIDATE_PROFILE);
     setSavedNotice(true);
     setTimeout(() => setSavedNotice(false), 2500);
   };
@@ -85,11 +85,11 @@ export const CvProfileView: React.FC = () => {
 
         <button
           type="button"
-          onClick={handleResetSample}
+          onClick={handleResetProfile}
           className="min-h-[40px] px-3.5 py-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg self-start sm:self-center whitespace-nowrap"
         >
           <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
-          Load Sample CV
+          Clear Profile
         </button>
       </section>
 
@@ -105,6 +105,7 @@ export const CvProfileView: React.FC = () => {
             <input
               id="cv-fullname"
               type="text"
+              placeholder="Your full name"
               value={draft.fullName}
               onChange={(e) => setDraft({ ...draft, fullName: e.target.value })}
               className="w-full h-11 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"
@@ -118,6 +119,7 @@ export const CvProfileView: React.FC = () => {
             <input
               id="cv-email"
               type="email"
+              placeholder="you@university.edu"
               value={draft.email}
               onChange={(e) => setDraft({ ...draft, email: e.target.value })}
               className="w-full h-11 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"
@@ -131,6 +133,7 @@ export const CvProfileView: React.FC = () => {
             <input
               id="cv-phone"
               type="text"
+              placeholder="+33 6 ..."
               value={draft.phone}
               onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
               className="w-full h-11 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"
@@ -144,6 +147,7 @@ export const CvProfileView: React.FC = () => {
             <input
               id="cv-school"
               type="text"
+              placeholder="Engineering school or university"
               value={draft.school}
               onChange={(e) => setDraft({ ...draft, school: e.target.value })}
               className="w-full h-11 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"
@@ -157,6 +161,7 @@ export const CvProfileView: React.FC = () => {
             <input
               id="cv-degree"
               type="text"
+              placeholder="e.g. MSc Software Engineering"
               value={draft.degree}
               onChange={(e) => setDraft({ ...draft, degree: e.target.value })}
               className="w-full h-11 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"
@@ -173,6 +178,7 @@ export const CvProfileView: React.FC = () => {
             <input
               id="cv-availability"
               type="text"
+              placeholder="e.g. February 2027 — 6 months"
               value={draft.availability}
               onChange={(e) => setDraft({ ...draft, availability: e.target.value })}
               className="w-full h-11 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"
@@ -186,6 +192,7 @@ export const CvProfileView: React.FC = () => {
             <input
               id="cv-portfolio"
               type="url"
+              placeholder="https://github.com/username"
               value={draft.portfolioUrl}
               onChange={(e) => setDraft({ ...draft, portfolioUrl: e.target.value })}
               className="w-full h-11 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"
@@ -199,6 +206,7 @@ export const CvProfileView: React.FC = () => {
             <input
               id="cv-target"
               type="text"
+              placeholder="e.g. Full-Stack / Data / AI Intern"
               value={draft.targetRole}
               onChange={(e) => setDraft({ ...draft, targetRole: e.target.value })}
               className="w-full h-11 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"
@@ -213,6 +221,7 @@ export const CvProfileView: React.FC = () => {
           <input
             id="cv-skills"
             type="text"
+            placeholder="TypeScript, React, Python, SQL..."
             value={skillsText}
             onChange={(e) => setSkillsText(e.target.value)}
             className="w-full h-11 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"
@@ -229,6 +238,7 @@ export const CvProfileView: React.FC = () => {
           <textarea
             id="cv-experiences"
             rows={4}
+            placeholder="Describe your projects or previous internships (one per line)"
             value={experiencesText}
             onChange={(e) => setExperiencesText(e.target.value)}
             className="w-full p-3 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"
@@ -237,11 +247,12 @@ export const CvProfileView: React.FC = () => {
 
         <div>
           <label htmlFor="cv-raw" className="block text-xs font-medium text-slate-700 mb-1">
-            Full CV Text (pasted resume content used for deeper AI adaptation)
+            Full CV Text (pasted resume content used for deeper adaptation)
           </label>
           <textarea
             id="cv-raw"
             rows={6}
+            placeholder="Paste your CV text here..."
             value={draft.rawCvText}
             onChange={(e) => setDraft({ ...draft, rawCvText: e.target.value })}
             className="w-full p-3 text-sm font-mono bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700"

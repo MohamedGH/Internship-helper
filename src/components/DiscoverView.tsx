@@ -130,14 +130,19 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         </div>
 
         <div className="flex items-center gap-3 text-xs text-slate-600 shrink-0">
-          <span>Active CV: {state.profile.fullName}</span>
+          <span>
+            Active CV:{' '}
+            {state.profile.fullName.trim() ? state.profile.fullName : 'Not configured yet'}
+          </span>
           <span aria-hidden="true">·</span>
           <button
             type="button"
             onClick={onGoToProfile}
             className="text-blue-700 hover:text-blue-800 font-medium underline underline-offset-4 min-h-[44px] sm:min-h-0 flex items-center"
           >
-            Edit CV &amp; Skills ({state.profile.skills.length})
+            {state.profile.fullName.trim()
+              ? `Edit CV & Skills (${state.profile.skills.length})`
+              : 'Configure CV Profile'}
           </button>
         </div>
       </section>
@@ -701,7 +706,24 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
 
       {/* Offers List (Zero-pill clean metadata + single elevation) */}
       <section aria-label="Discovered internships list">
-        {filteredOffers.length === 0 ? (
+        {state.offers.length === 0 && !state.isSearching ? (
+          <div className="bg-white border border-slate-200 rounded-xl p-8 text-center space-y-3">
+            <h2 className="font-display text-lg font-semibold text-slate-900">
+              No internships collected yet
+            </h2>
+            <p className="text-sm text-slate-600 max-w-lg mx-auto">
+              Run a live search above to scrape verified internship listings from public Greenhouse,
+              Lever, and Ashby ATS boards as well as your custom career sources.
+            </p>
+            <button
+              type="button"
+              onClick={() => void runMultiSourceSearch()}
+              className="px-4 py-2.5 text-xs font-semibold text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors"
+            >
+              Search Live Sources Now
+            </button>
+          </div>
+        ) : filteredOffers.length === 0 ? (
           <div className="bg-white border border-slate-200 rounded-xl p-8 text-center space-y-3">
             <h2 className="font-display text-lg font-semibold text-slate-900">
               No internships match your current filters

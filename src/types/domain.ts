@@ -99,8 +99,7 @@ export type OfferVerificationStatus =
   | 'verified_ats_api'
   | 'verified_offer'
   | 'generic_career_page'
-  | 'unverified_url'
-  | 'seed';
+  | 'unverified_url';
 
 export interface InternshipOffer {
   readonly id: string;
