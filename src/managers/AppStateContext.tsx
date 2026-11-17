@@ -7,9 +7,11 @@ import {
   CoverLetterLanguage,
   CoverLetterTone,
   ErrorSeverity,
+  ExternalSearchLink,
   InternshipOffer,
   PreparedDossier,
   SearchQuery,
+  SourceCollectionLog,
 } from '../types/domain';
 import {
   AppAction,
@@ -79,7 +81,11 @@ export const AppStateProvider: React.FC<{ readonly children: React.ReactNode }> 
         const res = await fetch('/api/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(query),
+          body: JSON.stringify({
+            ...query,
+            skills: query.skills && query.skills.length > 0 ? query.skills : state.profile.skills,
+            customSources: state.customSources,
+          }),
         });
 
         if (!res.ok) {
@@ -91,19 +97,23 @@ export const AppStateProvider: React.FC<{ readonly children: React.ReactNode }> 
         const payload = (await res.json()) as {
           offers?: Array<Parameters<typeof normalizeOffer>[0]>;
           groundingUrls?: Array<{ title: string; url: string }>;
+          externalSearchLinks?: ExternalSearchLink[];
+          sourceLogs?: SourceCollectionLog[];
         };
 
         const normalized = (payload.offers ?? [])
           .filter((item) => item && item.title && item.organization)
           .map((item, idx) => normalizeOffer(item, idx, state.customSources));
 
-        if (normalized.length === 0) {
+        const hasExternalLinks = (payload.externalSearchLinks?.length ?? 0) > 0;
+        if (normalized.length === 0 && !hasExternalLinks) {
           dispatch({
             type: 'SEARCH_FAILED',
             error: createAppError({
               code: 'NO_RESULTS_FOUND',
               severity: ErrorSeverity.Api,
-              message: 'No matching internships were returned for this query. Try broader keywords.',
+              message:
+                'No matching internships were scraped for these criteria. Try broader keywords, wider duration, or select Company Career Page / add a custom ATS board.',
               retryable: true,
               context: 'search',
             }),
@@ -115,6 +125,8 @@ export const AppStateProvider: React.FC<{ readonly children: React.ReactNode }> 
           type: 'SEARCH_SUCCEEDED',
           offers: normalized,
           groundingUrls: payload.groundingUrls ?? [],
+          externalSearchLinks: payload.externalSearchLinks ?? [],
+          sourceLogs: payload.sourceLogs ?? [],
         });
       } catch (err) {
         dispatch({
@@ -123,7 +135,7 @@ export const AppStateProvider: React.FC<{ readonly children: React.ReactNode }> 
         });
       }
     },
-    [state.searchQuery]
+    [state.searchQuery, state.customSources, state.profile.skills]
   );
 
   const discoverChannelsForOffer = useCallback(async (offer: InternshipOffer) => {
@@ -137,6 +149,7 @@ export const AppStateProvider: React.FC<{ readonly children: React.ReactNode }> 
           title: offer.title,
           location: offer.location,
           sourceUrl: offer.sourceUrl,
+          applicationUrl: offer.applicationUrl ?? undefined,
         }),
       });
 

@@ -32,11 +32,14 @@ export const computeCvTailoringPoints = (
   const topExperience = profile.experiences[0] ?? `${profile.degree} projects at ${profile.school}`;
   const secondExperience = profile.experiences[1];
 
+  const durationLabelFr = offer.duration ?? 'durée à préciser';
+  const durationLabelEn = offer.duration ?? 'flexible-duration';
+
   if (language === 'fr') {
     const points = [
       `Mettre en avant la maîtrise de ${matched.join(', ')} en lien direct avec les missions de ${offer.organization}.`,
       `Positionner l'expérience "${topExperience}" en haut de la section Expériences / Projets.`,
-      `Préciser la disponibilité (${profile.availability}) pour un stage de ${offer.duration} à ${offer.location}.`,
+      `Préciser la disponibilité (${profile.availability}) pour un stage (${durationLabelFr}) à ${offer.location}.`,
     ];
     if (secondExperience) {
       points.push(`Relier "${secondExperience}" aux enjeux produit de ${offer.title}.`);
@@ -47,7 +50,7 @@ export const computeCvTailoringPoints = (
   const points = [
     `Highlight hands-on proficiency in ${matched.join(', ')} aligned with ${offer.organization}'s stack.`,
     `Feature "${topExperience}" at the top of the Experience & Projects section.`,
-    `State availability (${profile.availability}) for the ${offer.duration} internship in ${offer.location}.`,
+    `State availability (${profile.availability}) for the ${durationLabelEn} internship in ${offer.location}.`,
   ];
   if (secondExperience) {
     points.push(`Connect "${secondExperience}" to ${offer.title} deliverables.`);
@@ -77,14 +80,16 @@ export const composeCoverLetterTemplate = (
   const expSummary =
     profile.experiences.slice(0, 2).join(' ; ') ||
     `projets académiques et techniques en ${skillsText}`;
+  const durationLabelFr = offer.duration ?? '6 mois';
+  const durationLabelEn = offer.duration ?? 'internship';
 
   if (language === 'fr') {
     const opening =
       tone === 'enthusiastic'
         ? `C'est avec un réel enthousiasme que je vous soumets ma candidature pour le poste de ${offer.title} au sein de ${offer.organization}.`
         : tone === 'concise'
-          ? `Actuellement en ${profile.degree} à ${profile.school}, je candidate au poste de ${offer.title} chez ${offer.organization} (${offer.duration}, disponible ${profile.availability}).`
-          : `Actuellement étudiant(e) en ${profile.degree} à ${profile.school}, je souhaite rejoindre ${offer.organization} dans le cadre d'un stage de ${offer.duration} en tant que ${offer.title}.`;
+          ? `Actuellement en ${profile.degree} à ${profile.school}, je candidate au poste de ${offer.title} chez ${offer.organization} (${durationLabelFr}, disponible ${profile.availability}).`
+          : `Actuellement étudiant(e) en ${profile.degree} à ${profile.school}, je souhaite rejoindre ${offer.organization} dans le cadre d'un stage (${durationLabelFr}) en tant que ${offer.title}.`;
 
     return [
       `Madame, Monsieur,`,
@@ -105,9 +110,9 @@ export const composeCoverLetterTemplate = (
 
   const openingEn =
     tone === 'enthusiastic'
-      ? `I am excited to apply for the ${offer.title} position at ${offer.organization} for a ${offer.duration} internship starting ${profile.availability}.`
+      ? `I am excited to apply for the ${offer.title} position at ${offer.organization} for an internship (${durationLabelEn}) starting ${profile.availability}.`
       : tone === 'concise'
-        ? `I am a ${profile.degree} candidate at ${profile.school} applying for ${offer.title} at ${offer.organization} (${offer.duration}, available ${profile.availability}).`
+        ? `I am a ${profile.degree} candidate at ${profile.school} applying for ${offer.title} at ${offer.organization} (${durationLabelEn}, available ${profile.availability}).`
         : `As a ${profile.degree} student at ${profile.school}, I am writing to apply for the ${offer.title} internship at ${offer.organization}.`;
 
   return [

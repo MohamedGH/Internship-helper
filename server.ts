@@ -5,8 +5,10 @@ import { fileURLToPath } from 'url';
 import {
   discoverChannelsWithGemini,
   prepareDossierWithGemini,
-  searchInternshipsWithGemini,
 } from './server/geminiService.ts';
+import { discoverChannelsFromUrl } from './server/search/channelScraper.ts';
+import { runScrapingSearch } from './server/search/scraperEngine.ts';
+import type { CustomSourceInput } from './server/search/types.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,10 +35,16 @@ const startServer = async () => {
         return;
       }
 
-      const result = await searchInternshipsWithGemini({
+      const customSources = Array.isArray(body.customSources)
+        ? (body.customSources as CustomSourceInput[])
+        : [];
+
+      const result = await runScrapingSearch({
         keywords,
+        domains: Array.isArray(body.domains) ? body.domains.map(String) : undefined,
+        skills: Array.isArray(body.skills) ? body.skills.map(String) : undefined,
         location: typeof body.location === 'string' ? body.location : 'Paris / Remote',
-        duration: typeof body.duration === 'string' ? body.duration : '6 months',
+        radiusKm: typeof body.radiusKm === 'number' ? body.radiusKm : undefined,
         minDurationMonths:
           typeof body.minDurationMonths === 'number' ? body.minDurationMonths : undefined,
         maxDurationMonths:
@@ -44,18 +52,19 @@ const startServer = async () => {
         startDateFrom: typeof body.startDateFrom === 'string' ? body.startDateFrom : undefined,
         startDateTo: typeof body.startDateTo === 'string' ? body.startDateTo : undefined,
         workMode: typeof body.workMode === 'string' ? body.workMode : 'all',
-        sources: Array.isArray(body.sources) && body.sources.length > 0
-          ? body.sources
-          : ['Welcome to the Jungle', 'LinkedIn', 'Indeed', 'HelloWork'],
+        sources:
+          Array.isArray(body.sources) && body.sources.length > 0
+            ? body.sources.map(String)
+            : ['Company Career Page', 'LinkedIn', 'Indeed', 'Welcome to the Jungle'],
+        customSources,
       });
 
       res.json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Search failed.';
-      const status = message.includes('429') || message.includes('RESOURCE_EXHAUSTED') ? 429 : 500;
-      res.status(status).json({
-        code: status === 429 ? 'RATE_LIMIT' : 'SEARCH_API_ERROR',
-        error: 'Unable to search internship sources right now.',
+      res.status(500).json({
+        code: 'SCRAPER_ENGINE_ERROR',
+        error: 'Unable to run web scraper search right now.',
         detail: message,
       });
     }
@@ -72,14 +81,35 @@ const startServer = async () => {
         return;
       }
 
-      const channels = await discoverChannelsWithGemini({
+      const scrapedChannels = await discoverChannelsFromUrl({
         organization: String(body.organization),
         title: String(body.title),
-        location: String(body.location ?? ''),
-        sourceUrl: String(body.sourceUrl ?? ''),
+        sourceUrl: typeof body.sourceUrl === 'string' ? body.sourceUrl : undefined,
+        applicationUrl: typeof body.applicationUrl === 'string' ? body.applicationUrl : undefined,
       });
 
-      res.json({ channels });
+      if (scrapedChannels.length > 0) {
+        res.json({ channels: scrapedChannels });
+        return;
+      }
+
+      // Optional Gemini fallback only when GEMINI_API_KEY is present and never crashes with 429
+      if (process.env.GEMINI_API_KEY) {
+        try {
+          const aiChannels = await discoverChannelsWithGemini({
+            organization: String(body.organization),
+            title: String(body.title),
+            location: String(body.location ?? ''),
+            sourceUrl: String(body.sourceUrl ?? ''),
+          });
+          res.json({ channels: aiChannels });
+          return;
+        } catch {
+          // Graceful fallback to empty verified channels instead of propagating 429
+        }
+      }
+
+      res.json({ channels: scrapedChannels });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Channel discovery failed.';
       res.status(500).json({

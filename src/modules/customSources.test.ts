@@ -12,17 +12,27 @@ import {
   validateCustomSource,
 } from './customSources';
 
-test('createCustomSource returns normalized CustomSource with default enabled and false isDefault', () => {
+test('createCustomSource returns normalized CustomSource with scraper config and false isDefault', () => {
   const source = createCustomSource({
     name: '  Station F Jobs  ',
     baseUrl: ' https://jobs.stationf.co ',
     description: '  Startup campus jobs ',
     searchUrlTemplate: 'https://jobs.stationf.co/jobs?query={keywords}',
+    cssSelectors: {
+      jobListSelector: '.job-card',
+      titleSelector: 'h3.title',
+    },
+    collectFrequencyMinutes: 30,
+    usePlaywright: true,
   });
 
   assert.equal(source.name, 'Station F Jobs');
   assert.equal(source.baseUrl, 'https://jobs.stationf.co');
   assert.equal(source.description, 'Startup campus jobs');
+  assert.equal(source.cssSelectors?.jobListSelector, '.job-card');
+  assert.equal(source.cssSelectors?.titleSelector, 'h3.title');
+  assert.equal(source.collectFrequencyMinutes, 30);
+  assert.equal(source.usePlaywright, true);
   assert.equal(source.enabled, true);
   assert.equal(source.isDefault, false);
   assert.ok(source.id.startsWith('custom_src_station_f_jobs_'));

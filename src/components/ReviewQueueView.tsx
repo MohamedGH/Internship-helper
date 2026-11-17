@@ -154,7 +154,7 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
                       <span aria-hidden="true">·</span>
                       <span>{offer.source}</span>
                       <span aria-hidden="true">·</span>
-                      <span className="font-mono tabular-nums">{offer.duration}</span>
+                      <span className="font-mono tabular-nums">{offer.duration ?? 'Duration unspecified'}</span>
                       {offer.startDate && (
                         <>
                           <span aria-hidden="true">·</span>

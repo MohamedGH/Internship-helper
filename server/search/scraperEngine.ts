@@ -1,0 +1,176 @@
+import { filterAndScoreOffers } from './filters/criteriaMatcher.ts';
+import { deduplicateScrapedOffers } from './filters/deduplicator.ts';
+import { normalizeScrapedOffer } from './normalizer.ts';
+import { resolveConnectorsForCriteria } from './scraperRegistry.ts';
+import {
+  ConnectorExecutionResult,
+  ExternalSearchLink,
+  NormalizedScrapedOffer,
+  ScraperConnector,
+  ScrapingEngineResponse,
+  SearchCriteria,
+  SourceCollectionLog,
+} from './types.ts';
+import { logScrapeEvent } from './utils/logger.ts';
+
+export interface EngineRunOptions {
+  readonly concurrency?: number;
+  readonly connectorTimeoutMs?: number;
+  readonly connectorsOverride?: readonly ScraperConnector[];
+  readonly fetchFn?: typeof fetch;
+}
+
+const runWithConcurrency = async <T, R>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T) => Promise<R>
+): Promise<readonly R[]> => {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+
+  const runners = Array.from({ length: Math.min(limit, Math.max(1, items.length)) }, async () => {
+    while (cursor < items.length) {
+      const idx = cursor;
+      cursor += 1;
+      results[idx] = await worker(items[idx]);
+    }
+  });
+
+  await Promise.all(runners);
+  return results;
+};
+
+const runConnectorSafely = async (
+  connector: ScraperConnector,
+  criteria: SearchCriteria,
+  timeoutMs: number
+): Promise<ConnectorExecutionResult> => {
+  const started = Date.now();
+  try {
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      setTimeout(() => reject(new Error(`Connector timeout after ${timeoutMs}ms`)), timeoutMs);
+    });
+    const res = await Promise.race([connector.collect(criteria), timeoutPromise]);
+    logScrapeEvent({
+      level: res.status === 'error' ? 'warn' : 'info',
+      event: 'connector_completed',
+      source: res.source,
+      connector: res.connector,
+      detail: {
+        status: res.status,
+        collectedCount: res.offers.length,
+        durationMs: res.durationMs,
+        message: res.message,
+      },
+    });
+    return res;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown connector error';
+    logScrapeEvent({
+      level: 'error',
+      event: 'connector_failed',
+      source: connector.sourceName,
+      connector: connector.id,
+      detail: { error: msg },
+    });
+    return {
+      source: connector.sourceName,
+      connector: connector.id,
+      status: 'error',
+      offers: [],
+      externalSearchLinks: [],
+      durationMs: Date.now() - started,
+      message: msg,
+    };
+  }
+};
+
+export const runScrapingSearch = async (
+  criteria: SearchCriteria,
+  options: EngineRunOptions = {}
+): Promise<ScrapingEngineResponse> => {
+  const engineStart = Date.now();
+  const concurrency = options.concurrency ?? 3;
+  const connectorTimeoutMs = options.connectorTimeoutMs ?? 12_000;
+
+  const connectors =
+    options.connectorsOverride ??
+    resolveConnectorsForCriteria(criteria, { fetchFn: options.fetchFn });
+
+  const executionResults = await runWithConcurrency(
+    connectors,
+    concurrency,
+    (connector) => runConnectorSafely(connector, criteria, connectorTimeoutMs)
+  );
+
+  const collectedAt = new Date().toISOString();
+  const normalizedOffers: NormalizedScrapedOffer[] = [];
+  const externalSearchLinks: ExternalSearchLink[] = [];
+
+  for (const res of executionResults) {
+    externalSearchLinks.push(...res.externalSearchLinks);
+    for (const raw of res.offers) {
+      const normalized = normalizeScrapedOffer(raw, collectedAt);
+      if (normalized) {
+        normalizedOffers.push(normalized);
+      }
+    }
+  }
+
+  const deduplicated = deduplicateScrapedOffers(normalizedOffers);
+  const filtered = filterAndScoreOffers(deduplicated, criteria);
+
+  // Build per-connector logs including how many offers survived final matching
+  const matchedBySource = new Map<string, number>();
+  for (const offer of filtered) {
+    matchedBySource.set(offer.source, (matchedBySource.get(offer.source) ?? 0) + 1);
+  }
+
+  const sourceLogs: SourceCollectionLog[] = executionResults.map((res) => ({
+    source: res.source,
+    connector: res.connector,
+    status: res.status,
+    collectedCount: res.offers.length,
+    matchedCount: matchedBySource.get(res.source) ?? 0,
+    durationMs: res.durationMs,
+    message: res.message,
+  }));
+
+  const uniqueSourcesSeen = new Set<string>();
+  const groundingUrls: Array<{ title: string; url: string }> = [];
+  for (const offer of filtered) {
+    if (!uniqueSourcesSeen.has(offer.sourceUrl) && groundingUrls.length < 6) {
+      uniqueSourcesSeen.add(offer.sourceUrl);
+      groundingUrls.push({
+        title: `${offer.organization} — ${offer.title}`,
+        url: offer.sourceUrl,
+      });
+    }
+  }
+
+  const totalDurationMs = Date.now() - engineStart;
+  logScrapeEvent({
+    level: 'info',
+    event: 'search_engine_completed',
+    detail: {
+      keywords: criteria.keywords,
+      totalCollected: normalizedOffers.length,
+      afterDeduplication: deduplicated.length,
+      afterFiltering: filtered.length,
+      durationMs: totalDurationMs,
+    },
+  });
+
+  return {
+    offers: filtered,
+    groundingUrls,
+    externalSearchLinks,
+    sourceLogs,
+    stats: {
+      totalCollected: normalizedOffers.length,
+      afterDeduplication: deduplicated.length,
+      afterFiltering: filtered.length,
+      durationMs: totalDurationMs,
+    },
+  };
+};

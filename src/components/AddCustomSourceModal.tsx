@@ -30,6 +30,15 @@ export const AddCustomSourceModal: React.FC<AddCustomSourceModalProps> = ({
   const [baseUrl, setBaseUrl] = useState('');
   const [searchUrlTemplate, setSearchUrlTemplate] = useState('');
   const [description, setDescription] = useState('');
+  const [showScraperAdvanced, setShowScraperAdvanced] = useState(false);
+  const [jobListSelector, setJobListSelector] = useState('');
+  const [titleSelector, setTitleSelector] = useState('');
+  const [companySelector, setCompanySelector] = useState('');
+  const [locationSelector, setLocationSelector] = useState('');
+  const [linkSelector, setLinkSelector] = useState('');
+  const [descriptionSelector, setDescriptionSelector] = useState('');
+  const [collectFrequencyMinutes, setCollectFrequencyMinutes] = useState(15);
+  const [usePlaywright, setUsePlaywright] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
@@ -59,19 +68,47 @@ export const AddCustomSourceModal: React.FC<AddCustomSourceModalProps> = ({
       return;
     }
 
+    const hasSelectors =
+      jobListSelector.trim() ||
+      titleSelector.trim() ||
+      companySelector.trim() ||
+      locationSelector.trim() ||
+      linkSelector.trim() ||
+      descriptionSelector.trim();
+
     const newSource = createCustomSource({
       name,
       baseUrl,
       description: description.trim() || undefined,
       searchUrlTemplate: searchUrlTemplate.trim() || undefined,
+      cssSelectors: hasSelectors
+        ? {
+            jobListSelector: jobListSelector.trim() || undefined,
+            titleSelector: titleSelector.trim() || undefined,
+            companySelector: companySelector.trim() || undefined,
+            locationSelector: locationSelector.trim() || undefined,
+            linkSelector: linkSelector.trim() || undefined,
+            descriptionSelector: descriptionSelector.trim() || undefined,
+          }
+        : undefined,
+      collectFrequencyMinutes,
+      usePlaywright,
     });
 
     onAddSource(newSource);
-    setSuccessNotice(`Custom source "${newSource.name}" added successfully.`);
+    setSuccessNotice(`Custom source "${newSource.name}" added and ready for scraping.`);
     setName('');
     setBaseUrl('');
     setSearchUrlTemplate('');
     setDescription('');
+    setJobListSelector('');
+    setTitleSelector('');
+    setCompanySelector('');
+    setLocationSelector('');
+    setLinkSelector('');
+    setDescriptionSelector('');
+    setCollectFrequencyMinutes(15);
+    setUsePlaywright(false);
   };
 
   const handleApplyPreset = (preset: SourcePreset) => {
@@ -293,6 +330,134 @@ export const AddCustomSourceModal: React.FC<AddCustomSourceModalProps> = ({
                   placeholder="e.g. AI & Data Science startups in Île-de-France"
                   className="w-full h-10 px-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700 transition-colors"
                 />
+              </div>
+
+              <div className="pt-1">
+                <button
+                  type="button"
+                  aria-expanded={showScraperAdvanced}
+                  onClick={() => setShowScraperAdvanced((prev) => !prev)}
+                  className="text-xs font-medium text-blue-700 hover:text-blue-800 inline-flex items-center gap-1"
+                >
+                  {showScraperAdvanced
+                    ? 'Hide Scraper CSS Selectors & Schedule'
+                    : 'Configure CSS Selectors, Frequency & JS Fallback (Optional)'}
+                </button>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Schema.org <code className="bg-slate-100 px-1 rounded">JobPosting</code> JSON-LD and Greenhouse / Lever / Ashby ATS URLs are detected automatically.
+                </p>
+
+                {showScraperAdvanced && (
+                  <div className="mt-3 p-3.5 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label htmlFor="sel-job-list" className="block text-[11px] font-medium text-slate-700 mb-1">
+                          Job Card Container CSS Selector
+                        </label>
+                        <input
+                          id="sel-job-list"
+                          type="text"
+                          value={jobListSelector}
+                          onChange={(e) => setJobListSelector(e.target.value)}
+                          placeholder=".job-card or li.opening"
+                          className="w-full h-9 px-2.5 text-xs font-mono text-slate-900 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-700"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="sel-title" className="block text-[11px] font-medium text-slate-700 mb-1">
+                          Title CSS Selector
+                        </label>
+                        <input
+                          id="sel-title"
+                          type="text"
+                          value={titleSelector}
+                          onChange={(e) => setTitleSelector(e.target.value)}
+                          placeholder="h3.job-title"
+                          className="w-full h-9 px-2.5 text-xs font-mono text-slate-900 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-700"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="sel-company" className="block text-[11px] font-medium text-slate-700 mb-1">
+                          Company Selector (Optional)
+                        </label>
+                        <input
+                          id="sel-company"
+                          type="text"
+                          value={companySelector}
+                          onChange={(e) => setCompanySelector(e.target.value)}
+                          placeholder=".company-name"
+                          className="w-full h-9 px-2.5 text-xs font-mono text-slate-900 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-700"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="sel-location" className="block text-[11px] font-medium text-slate-700 mb-1">
+                          Location Selector (Optional)
+                        </label>
+                        <input
+                          id="sel-location"
+                          type="text"
+                          value={locationSelector}
+                          onChange={(e) => setLocationSelector(e.target.value)}
+                          placeholder=".job-location"
+                          className="w-full h-9 px-2.5 text-xs font-mono text-slate-900 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-700"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="sel-link" className="block text-[11px] font-medium text-slate-700 mb-1">
+                          Offer Link Selector (Optional)
+                        </label>
+                        <input
+                          id="sel-link"
+                          type="text"
+                          value={linkSelector}
+                          onChange={(e) => setLinkSelector(e.target.value)}
+                          placeholder="a.apply-link"
+                          className="w-full h-9 px-2.5 text-xs font-mono text-slate-900 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-700"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="sel-desc" className="block text-[11px] font-medium text-slate-700 mb-1">
+                          Description Selector (Optional)
+                        </label>
+                        <input
+                          id="sel-desc"
+                          type="text"
+                          value={descriptionSelector}
+                          onChange={(e) => setDescriptionSelector(e.target.value)}
+                          placeholder=".job-summary"
+                          className="w-full h-9 px-2.5 text-xs font-mono text-slate-900 bg-white border border-slate-200 rounded-md focus:outline-none focus:border-blue-700"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-slate-200">
+                      <div className="flex items-center gap-2">
+                        <label htmlFor="custom-source-freq" className="text-[11px] font-medium text-slate-700">
+                          Cache TTL (minutes):
+                        </label>
+                        <input
+                          id="custom-source-freq"
+                          type="number"
+                          min={0}
+                          max={1440}
+                          value={collectFrequencyMinutes}
+                          onChange={(e) => setCollectFrequencyMinutes(Math.max(0, Number(e.target.value) || 0))}
+                          className="w-20 h-8 px-2 text-xs font-mono text-slate-900 bg-white border border-slate-200 rounded-md"
+                        />
+                      </div>
+
+                      <label className="inline-flex items-center gap-2 text-[11px] text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={usePlaywright}
+                          onChange={(e) => setUsePlaywright(e.target.checked)}
+                          className="rounded border-slate-300 text-blue-700 focus:ring-blue-600"
+                        />
+                        <span>Enable JS rendering fallback (if available)</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end pt-1">

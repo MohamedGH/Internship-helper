@@ -46,6 +46,29 @@ const getStatusLabel = (status: ApplicationStatus): string => {
   }
 };
 
+const IT_DOMAINS = [
+  'Développement logiciel',
+  'Développement web',
+  'Data',
+  'IA',
+  'Informatique décisionnelle',
+] as const;
+
+const getVerificationLabel = (status?: InternshipOffer['verificationStatus']): string | null => {
+  switch (status) {
+    case 'verified_ats_api':
+      return 'Verified ATS API';
+    case 'verified_offer':
+      return 'Verified Offer URL';
+    case 'generic_career_page':
+      return 'Career Page Link';
+    case 'unverified_url':
+      return 'Unverified URL';
+    default:
+      return null;
+  }
+};
+
 export const DiscoverView: React.FC<DiscoverViewProps> = ({
   onOpenDossier,
   onGoToProfile,
@@ -69,6 +92,14 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
       ? state.searchQuery.sources.filter((s) => s !== sourceName)
       : [...state.searchQuery.sources, sourceName];
     dispatch({ type: 'SET_SEARCH_QUERY', query: { sources: nextSources } });
+  };
+
+  const toggleDomainInQuery = (domain: string) => {
+    const current = state.searchQuery.domains ?? [];
+    const next = current.includes(domain)
+      ? current.filter((d) => d !== domain)
+      : [...current, domain];
+    dispatch({ type: 'SET_SEARCH_QUERY', query: { domains: next } });
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -304,6 +335,29 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                 className="w-full h-11 px-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700 transition-colors"
               />
             </div>
+          </div>
+
+          {/* IT Domains selector */}
+          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-slate-500 mr-1">Domains:</span>
+            {IT_DOMAINS.map((domain) => {
+              const selected = (state.searchQuery.domains ?? []).includes(domain);
+              return (
+                <button
+                  key={domain}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => toggleDomainInQuery(domain)}
+                  className={`px-2.5 py-1 min-h-[32px] text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${
+                    selected
+                      ? 'bg-blue-700 text-white border-blue-700'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  {domain}
+                </button>
+              );
+            })}
           </div>
 
           {/* Multi-source selector buttons */}
@@ -575,10 +629,61 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
         </section>
       )}
 
+      {/* Scraper Collection Summary & Policy-Restricted External Links */}
+      {(state.lastSourceLogs.length > 0 || state.lastExternalSearchLinks.length > 0) && (
+        <section
+          aria-label="Scraping report and external board links"
+          className="bg-white border border-slate-200 rounded-xl p-4 space-y-3 text-xs text-slate-600"
+        >
+          {state.lastSourceLogs.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              <span className="font-semibold text-slate-800">Scraper Run:</span>
+              {state.lastSourceLogs.map((log, idx) => (
+                <span key={`${log.connector}_${idx}`} className="font-mono text-[11px] text-slate-700">
+                  {log.source} ({log.connector}): {log.matchedCount}/{log.collectedCount} matched ·{' '}
+                  <span
+                    className={
+                      log.status === 'ok' || log.status === 'cached'
+                        ? 'text-emerald-700 font-semibold'
+                        : log.status === 'disabled_policy'
+                          ? 'text-slate-500'
+                          : 'text-amber-700 font-semibold'
+                    }
+                  >
+                    {log.status}
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {state.lastExternalSearchLinks.length > 0 && (
+            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              <span className="font-semibold text-slate-800">
+                External Portals (ToS / Auth Protected — Open Directly):
+              </span>
+              {state.lastExternalSearchLinks.map((link) => (
+                <a
+                  key={`${link.source}_${link.url}`}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={link.reason}
+                  className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline"
+                >
+                  <span>{link.label}</span>
+                  <ExternalLink className="w-3 h-3 shrink-0" aria-hidden="true" />
+                </a>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Grounding Attribution URLs from live Search */}
       {state.lastSearchGroundingUrls.length > 0 && (
         <section className="bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs text-slate-600 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-          <span className="font-medium text-slate-800">Verified search references:</span>
+          <span className="font-medium text-slate-800">Collected Listing URLs:</span>
           {state.lastSearchGroundingUrls.slice(0, 5).map((item) => (
             <a
               key={item.url}
@@ -639,7 +744,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                         <span aria-hidden="true">·</span>
                         <span>{offer.workMode}</span>
                         <span aria-hidden="true">·</span>
-                        <span className="tabular-nums font-mono">{offer.duration}</span>
+                        <span className="tabular-nums font-mono">
+                          {offer.duration ?? 'Duration unspecified'}
+                        </span>
                         {offer.startDate && (
                           <>
                             <span aria-hidden="true">·</span>
@@ -647,6 +754,22 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                               {offer.endDate
                                 ? `${offer.startDate} to ${offer.endDate}`
                                 : `Start: ${offer.startDate}`}
+                            </span>
+                          </>
+                        )}
+                        {getVerificationLabel(offer.verificationStatus) && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="text-slate-700 font-medium">
+                              {getVerificationLabel(offer.verificationStatus)}
+                            </span>
+                          </>
+                        )}
+                        {typeof offer.matchScore === 'number' && offer.matchScore > 0 && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="font-mono tabular-nums text-blue-700 font-semibold">
+                              Match {offer.matchScore}%
                             </span>
                           </>
                         )}

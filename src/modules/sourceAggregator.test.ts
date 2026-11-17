@@ -60,15 +60,15 @@ test('mapRawSourceName accurately matches custom source names', () => {
   assert.equal(mapRawSourceName('Unknown Job Portal', customSources), 'Unknown Job Portal');
 });
 
-test('parseDurationMonths correctly parses month and week formats', () => {
+test('parseDurationMonths correctly parses month and week formats and returns null when missing', () => {
   assert.equal(parseDurationMonths('6 months'), 6);
   assert.equal(parseDurationMonths('6 mois'), 6);
   assert.equal(parseDurationMonths('4 à 6 mois'), 6);
   assert.equal(parseDurationMonths('3-4 mois'), 4);
   assert.equal(parseDurationMonths('3 months'), 3);
   assert.equal(parseDurationMonths('12 weeks'), 3);
-  assert.equal(parseDurationMonths(''), 6);
-  assert.equal(parseDurationMonths(undefined), 6);
+  assert.equal(parseDurationMonths(''), null);
+  assert.equal(parseDurationMonths(undefined), null);
 });
 
 test('isOfferWithinDuration respects minimum and maximum duration constraints', () => {

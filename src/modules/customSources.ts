@@ -116,6 +116,9 @@ export const createCustomSource = (input: {
   readonly baseUrl: string;
   readonly description?: string;
   readonly searchUrlTemplate?: string;
+  readonly cssSelectors?: CustomSource['cssSelectors'];
+  readonly collectFrequencyMinutes?: number;
+  readonly usePlaywright?: boolean;
 }): CustomSource => {
   const trimmedName = input.name.trim();
   const trimmedUrl = input.baseUrl.trim();
@@ -133,6 +136,9 @@ export const createCustomSource = (input: {
     baseUrl: trimmedUrl,
     description: input.description?.trim() || undefined,
     searchUrlTemplate: input.searchUrlTemplate?.trim() || undefined,
+    cssSelectors: input.cssSelectors,
+    collectFrequencyMinutes: input.collectFrequencyMinutes ?? 15,
+    usePlaywright: Boolean(input.usePlaywright),
     enabled: true,
     isDefault: false,
     createdAt: new Date().toISOString(),

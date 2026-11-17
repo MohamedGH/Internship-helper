@@ -245,7 +245,7 @@ export const DossierStudioView: React.FC<DossierStudioViewProps> = ({
           <span aria-hidden="true">·</span>
           <span>{offer.location}</span>
           <span aria-hidden="true">·</span>
-          <span className="font-mono tabular-nums">{offer.duration}</span>
+          <span className="font-mono tabular-nums">{offer.duration ?? 'Duration unspecified'}</span>
           {offer.startDate && (
             <>
               <span aria-hidden="true">·</span>

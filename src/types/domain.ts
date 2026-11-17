@@ -67,18 +67,40 @@ export interface ApplicationChannel {
   readonly sourceUrl?: string;
 }
 
+export interface CustomSourceSelectors {
+  readonly jobListSelector?: string;
+  readonly titleSelector?: string;
+  readonly companySelector?: string;
+  readonly locationSelector?: string;
+  readonly linkSelector?: string;
+  readonly descriptionSelector?: string;
+  readonly dateSelector?: string;
+  readonly durationSelector?: string;
+  readonly emailSelector?: string;
+}
+
 export interface CustomSource {
   readonly id: string;
   readonly name: string;
   readonly baseUrl: string;
   readonly searchUrlTemplate?: string;
   readonly description?: string;
+  readonly cssSelectors?: CustomSourceSelectors;
+  readonly collectFrequencyMinutes?: number;
+  readonly usePlaywright?: boolean;
   readonly enabled: boolean;
   readonly isDefault: boolean;
   readonly createdAt: string;
 }
 
 export type SourceIdentifier = SourceProvider | string;
+
+export type OfferVerificationStatus =
+  | 'verified_ats_api'
+  | 'verified_offer'
+  | 'generic_career_page'
+  | 'unverified_url'
+  | 'seed';
 
 export interface InternshipOffer {
   readonly id: string;
@@ -87,13 +109,18 @@ export interface InternshipOffer {
   readonly organizationSummary: string;
   readonly location: string;
   readonly workMode: WorkMode;
-  readonly duration: string;
-  readonly durationMonths: number;
-  readonly startDate?: string;
-  readonly endDate?: string;
+  readonly contractType?: string | null;
+  readonly duration: string | null;
+  readonly durationMonths: number | null;
+  readonly startDate: string | null;
+  readonly endDate: string | null;
   readonly source: SourceIdentifier;
   readonly sourceUrl: string;
-  readonly postedDate: string;
+  readonly applicationUrl?: string | null;
+  readonly postedDate: string | null;
+  readonly collectedAt?: string;
+  readonly verificationStatus?: OfferVerificationStatus;
+  readonly matchScore?: number;
   readonly description: string;
   readonly requirements: readonly string[];
   readonly channels: readonly ApplicationChannel[];
@@ -117,7 +144,10 @@ export interface PreparedDossier {
 
 export interface SearchQuery {
   readonly keywords: string;
+  readonly domains?: readonly string[];
+  readonly skills?: readonly string[];
   readonly location: string;
+  readonly radiusKm?: number;
   readonly duration: string;
   readonly minDurationMonths: number;
   readonly maxDurationMonths: number;
@@ -125,6 +155,23 @@ export interface SearchQuery {
   readonly startDateTo: string;
   readonly workMode: WorkMode | 'all';
   readonly sources: readonly string[];
+}
+
+export interface ExternalSearchLink {
+  readonly source: string;
+  readonly label: string;
+  readonly url: string;
+  readonly reason: string;
+}
+
+export interface SourceCollectionLog {
+  readonly source: string;
+  readonly connector: string;
+  readonly status: 'ok' | 'cached' | 'disabled_policy' | 'robots_blocked' | 'error';
+  readonly collectedCount: number;
+  readonly matchedCount: number;
+  readonly durationMs: number;
+  readonly message?: string;
 }
 
 export interface AppError {
@@ -168,6 +215,8 @@ export interface AppState {
   readonly isPreparingOfferId: string | null;
   readonly isDiscoveringChannelsId: string | null;
   readonly lastSearchGroundingUrls: readonly { readonly title: string; readonly url: string }[];
+  readonly lastExternalSearchLinks: readonly ExternalSearchLink[];
+  readonly lastSourceLogs: readonly SourceCollectionLog[];
   readonly errors: readonly AppError[];
   readonly lastDispatchNotice: string | null;
 }

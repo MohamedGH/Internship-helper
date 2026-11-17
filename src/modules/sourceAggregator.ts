@@ -281,29 +281,36 @@ export const mapRawWorkMode = (raw: string | undefined): WorkMode => {
   return WorkMode.OnSite;
 };
 
-export const parseDurationMonths = (durationStr?: string): number => {
-  if (!durationStr) return 6;
+export const parseDurationMonths = (durationStr?: string | null): number | null => {
+  if (!durationStr) return null;
   const lower = durationStr.toLowerCase().trim();
-  const rangeMatch = lower.match(/(\d+)\s*(?:à|-|to)\s*(\d+)\s*(?:mois|months?|m\b)?/);
+  if (!lower) return null;
+
+  const rangeMatch = lower.match(/(\d+)\s*(?:à|-|to)\s*(\d+)\s*(?:mois|months?|m\b)/);
   if (rangeMatch && rangeMatch[2]) {
     return parseInt(rangeMatch[2], 10);
   }
-  const singleMatch = lower.match(/(\d+)\s*(?:mois|months?|m\b)?/);
-  if (singleMatch && singleMatch[1]) {
-    const val = parseInt(singleMatch[1], 10);
-    if (lower.includes('semaine') || lower.includes('week')) {
-      return Math.round(val / 4.3) || 1;
-    }
-    return val;
+  const weekMatch = lower.match(/(\d+)\s*(?:semaines?|weeks?)/);
+  if (weekMatch && weekMatch[1]) {
+    const val = parseInt(weekMatch[1], 10);
+    return Math.max(1, Math.round(val / 4.3));
   }
-  return 6;
+  const singleMatch = lower.match(/(\d+)\s*(?:mois|months?|m\b)/);
+  if (singleMatch && singleMatch[1]) {
+    return parseInt(singleMatch[1], 10);
+  }
+  return null;
 };
 
 export const isOfferWithinDuration = (
-  durationMonths: number,
+  durationMonths: number | null | undefined,
   minMonths: number,
-  maxMonths: number
+  maxMonths: number,
+  allowUnspecified = true
 ): boolean => {
+  if (durationMonths === null || durationMonths === undefined) {
+    return (minMonths <= 0 && maxMonths <= 0) || allowUnspecified;
+  }
   if (minMonths > 0 && durationMonths < minMonths) {
     return false;
   }
@@ -314,12 +321,13 @@ export const isOfferWithinDuration = (
 };
 
 export const isOfferWithinDateRange = (
-  offerStartDate: string | undefined,
+  offerStartDate: string | null | undefined,
   dateFrom: string,
-  dateTo: string
+  dateTo: string,
+  allowUnspecified = true
 ): boolean => {
   if (!dateFrom && !dateTo) return true;
-  if (!offerStartDate) return true;
+  if (!offerStartDate) return allowUnspecified;
 
   const offerStart = offerStartDate.trim().slice(0, 10);
   if (dateFrom && offerStart < dateFrom.slice(0, 10)) {
@@ -335,21 +343,26 @@ export interface RawOfferInput {
   readonly id?: string;
   readonly title: string;
   readonly organization: string;
-  readonly organizationSummary?: string;
-  readonly location?: string;
-  readonly workMode?: string;
-  readonly duration?: string;
-  readonly durationMonths?: number;
-  readonly startDate?: string;
-  readonly endDate?: string;
+  readonly organizationSummary?: string | null;
+  readonly location?: string | null;
+  readonly workMode?: string | null;
+  readonly contractType?: string | null;
+  readonly duration?: string | null;
+  readonly durationMonths?: number | null;
+  readonly startDate?: string | null;
+  readonly endDate?: string | null;
   readonly source?: string;
   readonly sourceUrl?: string;
-  readonly postedDate?: string;
+  readonly applicationUrl?: string | null;
+  readonly postedDate?: string | null;
+  readonly collectedAt?: string;
+  readonly verificationStatus?: InternshipOffer['verificationStatus'];
+  readonly matchScore?: number;
   readonly description?: string;
   readonly requirements?: readonly string[];
-  readonly applicationEmail?: string;
-  readonly applicationFormUrl?: string;
-  readonly contactName?: string;
+  readonly applicationEmail?: string | null;
+  readonly applicationFormUrl?: string | null;
+  readonly contactName?: string | null;
 }
 
 export const normalizeOffer = (
@@ -363,7 +376,7 @@ export const normalizeOffer = (
     .replace(/^_|_$/g, '')
     .slice(0, 42);
   const id = raw.id?.trim() || `offer_${slug}_${index}`;
-  const sourceUrl = raw.sourceUrl?.trim() || 'https://www.welcometothejungle.com';
+  const sourceUrl = raw.sourceUrl?.trim() || '';
 
   const rawChannels: Array<{
     type: ChannelType;
@@ -377,14 +390,15 @@ export const normalizeOffer = (
       type: ChannelType.Email,
       target: raw.applicationEmail.trim(),
       label: raw.contactName ? `${raw.contactName} (Email)` : 'Direct Recruiting Email',
-      contactName: raw.contactName,
+      contactName: raw.contactName ?? undefined,
     });
   }
 
-  if (raw.applicationFormUrl && raw.applicationFormUrl.trim().startsWith('http')) {
+  const resolvedFormUrl = raw.applicationFormUrl?.trim() || raw.applicationUrl?.trim() || '';
+  if (resolvedFormUrl.startsWith('http')) {
     rawChannels.push({
       type: ChannelType.Form,
-      target: raw.applicationFormUrl.trim(),
+      target: resolvedFormUrl,
       label: 'Official Application Form',
     });
   }
@@ -401,15 +415,20 @@ export const normalizeOffer = (
     organization: raw.organization.trim(),
     organizationSummary:
       raw.organizationSummary?.trim() || `${raw.organization.trim()} engineering and product team.`,
-    location: raw.location?.trim() || 'France / Remote',
-    workMode: mapRawWorkMode(raw.workMode),
-    duration: raw.duration?.trim() || `${durationMonths} months`,
+    location: raw.location?.trim() || 'Unspecified',
+    workMode: mapRawWorkMode(raw.workMode ?? undefined),
+    contractType: raw.contractType?.trim() || null,
+    duration: raw.duration?.trim() || (durationMonths ? `${durationMonths} months` : null),
     durationMonths,
-    startDate: raw.startDate?.trim() || '2027-02-01',
-    endDate: raw.endDate?.trim(),
+    startDate: raw.startDate?.trim() || null,
+    endDate: raw.endDate?.trim() || null,
     source: mapRawSourceName(raw.source, customSources),
     sourceUrl,
-    postedDate: raw.postedDate?.trim() || new Date().toISOString().slice(0, 10),
+    applicationUrl: resolvedFormUrl || null,
+    postedDate: raw.postedDate?.trim() || null,
+    collectedAt: raw.collectedAt,
+    verificationStatus: raw.verificationStatus,
+    matchScore: typeof raw.matchScore === 'number' ? raw.matchScore : undefined,
     description:
       raw.description?.trim() ||
       `Internship / stage opportunity as ${raw.title.trim()} at ${raw.organization.trim()}.`,

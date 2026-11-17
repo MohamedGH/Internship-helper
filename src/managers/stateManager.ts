@@ -5,10 +5,12 @@ import {
   AppState,
   CandidateProfile,
   CustomSource,
+  ExternalSearchLink,
   FilterState,
   InternshipOffer,
   PreparedDossier,
   SearchQuery,
+  SourceCollectionLog,
 } from '../types/domain';
 import { errorReducer } from './errorManager';
 import {
@@ -73,6 +75,8 @@ export type AppAction =
       readonly type: 'SEARCH_SUCCEEDED';
       readonly offers: readonly InternshipOffer[];
       readonly groundingUrls: readonly { readonly title: string; readonly url: string }[];
+      readonly externalSearchLinks?: readonly ExternalSearchLink[];
+      readonly sourceLogs?: readonly SourceCollectionLog[];
     }
   | { readonly type: 'SEARCH_FAILED'; readonly error: AppError }
   | { readonly type: 'PREPARE_STARTED'; readonly offerId: string }
@@ -144,6 +148,8 @@ export const createInitialState = (
     isPreparingOfferId: null,
     isDiscoveringChannelsId: null,
     lastSearchGroundingUrls: [],
+    lastExternalSearchLinks: [],
+    lastSourceLogs: [],
     errors: [],
     lastDispatchNotice: null,
   };
@@ -273,8 +279,13 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
       return {
         ...state,
         isSearching: false,
-        offers: deduplicateOffers(action.offers, state.offers),
+        offers:
+          action.offers.length > 0
+            ? deduplicateOffers(action.offers, state.offers)
+            : state.offers,
         lastSearchGroundingUrls: action.groundingUrls,
+        lastExternalSearchLinks: action.externalSearchLinks ?? [],
+        lastSourceLogs: action.sourceLogs ?? [],
       };
 
     case 'SEARCH_FAILED':
