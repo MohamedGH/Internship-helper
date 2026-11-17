@@ -1,17 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ArrowRight,
   ExternalLink,
   Globe,
   Mail,
+  Plus,
   Search,
   Sparkles,
 } from 'lucide-react';
 import {
   ApplicationStatus,
   ChannelType,
+  CustomSource,
   InternshipOffer,
-  SourceProvider,
   WorkMode,
 } from '../types/domain';
 import { useAppState } from '../managers/AppStateContext';
@@ -19,9 +20,9 @@ import {
   selectFilteredOffers,
   selectPipelineCounts,
 } from '../managers/stateManager';
-import { ALL_SOURCES } from '../modules/sourceAggregator';
 import { extractMatchingSkills } from '../modules/dossierComposer';
 import { selectPreferredChannel } from '../modules/channelFinder';
+import { AddCustomSourceModal } from './AddCustomSourceModal';
 
 interface DiscoverViewProps {
   readonly onOpenDossier: (offerId: string) => void;
@@ -57,14 +58,16 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
     discoverChannelsForOffer,
   } = useAppState();
 
+  const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+
   const filteredOffers = selectFilteredOffers(state);
   const counts = selectPipelineCounts(state);
 
-  const toggleSourceInQuery = (source: SourceProvider) => {
-    const exists = state.searchQuery.sources.includes(source);
+  const toggleSourceInQuery = (sourceName: string) => {
+    const exists = state.searchQuery.sources.includes(sourceName);
     const nextSources = exists
-      ? state.searchQuery.sources.filter((s) => s !== source)
-      : [...state.searchQuery.sources, source];
+      ? state.searchQuery.sources.filter((s) => s !== sourceName)
+      : [...state.searchQuery.sources, sourceName];
     dispatch({ type: 'SET_SEARCH_QUERY', query: { sources: nextSources } });
   };
 
@@ -202,27 +205,146 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </div>
           </div>
 
+          {/* Row 2: Stage Dates & Duration Limits */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-100">
+            <div>
+              <label
+                htmlFor="search-min-duration"
+                className="block text-xs font-medium text-slate-700 mb-1"
+              >
+                Min Duration
+              </label>
+              <select
+                id="search-min-duration"
+                value={state.searchQuery.minDurationMonths}
+                onChange={(e) =>
+                  dispatch({
+                    type: 'SET_SEARCH_QUERY',
+                    query: { minDurationMonths: parseInt(e.target.value, 10) || 1 },
+                  })
+                }
+                className="w-full h-11 px-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700 transition-colors"
+              >
+                <option value={1}>1 month</option>
+                <option value={2}>2 months</option>
+                <option value={3}>3 months</option>
+                <option value={4}>4 months</option>
+                <option value={5}>5 months</option>
+                <option value={6}>6 months</option>
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="search-max-duration"
+                className="block text-xs font-medium text-slate-700 mb-1"
+              >
+                Max Duration
+              </label>
+              <select
+                id="search-max-duration"
+                value={state.searchQuery.maxDurationMonths}
+                onChange={(e) =>
+                  dispatch({
+                    type: 'SET_SEARCH_QUERY',
+                    query: { maxDurationMonths: parseInt(e.target.value, 10) || 6 },
+                  })
+                }
+                className="w-full h-11 px-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700 transition-colors"
+              >
+                <option value={2}>2 months</option>
+                <option value={3}>3 months</option>
+                <option value={4}>4 months</option>
+                <option value={5}>5 months</option>
+                <option value={6}>6 months</option>
+                <option value={8}>8 months</option>
+                <option value={10}>10 months</option>
+                <option value={12}>12 months</option>
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="search-date-from"
+                className="block text-xs font-medium text-slate-700 mb-1"
+              >
+                Stage Start Date From
+              </label>
+              <input
+                id="search-date-from"
+                type="date"
+                value={state.searchQuery.startDateFrom}
+                onChange={(e) =>
+                  dispatch({
+                    type: 'SET_SEARCH_QUERY',
+                    query: { startDateFrom: e.target.value },
+                  })
+                }
+                className="w-full h-11 px-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700 transition-colors"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="search-date-to"
+                className="block text-xs font-medium text-slate-700 mb-1"
+              >
+                Stage Start Date To
+              </label>
+              <input
+                id="search-date-to"
+                type="date"
+                value={state.searchQuery.startDateTo}
+                onChange={(e) =>
+                  dispatch({
+                    type: 'SET_SEARCH_QUERY',
+                    query: { startDateTo: e.target.value },
+                  })
+                }
+                className="w-full h-11 px-3 text-sm text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:bg-white focus:border-blue-700 transition-colors"
+              />
+            </div>
+          </div>
+
           {/* Multi-source selector buttons */}
           <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-slate-500 mr-1">Sources:</span>
-            {ALL_SOURCES.map((source) => {
-              const selected = state.searchQuery.sources.includes(source);
+            {state.customSources.map((source) => {
+              const selected = state.searchQuery.sources.includes(source.name);
               return (
                 <button
-                  key={source}
+                  key={source.id}
                   type="button"
                   aria-pressed={selected}
-                  onClick={() => toggleSourceInQuery(source)}
-                  className={`px-3 py-1.5 min-h-[36px] text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${
+                  onClick={() => toggleSourceInQuery(source.name)}
+                  className={`px-3 py-1.5 min-h-[36px] text-xs font-medium rounded-lg border transition-colors whitespace-nowrap inline-flex items-center gap-1.5 ${
                     selected
                       ? 'bg-slate-900 text-white border-slate-900'
                       : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:text-slate-900'
                   }`}
                 >
-                  {source}
+                  <span>{source.name}</span>
+                  {!source.isDefault && (
+                    <span
+                      className={`text-[10px] px-1 py-0.2 rounded font-normal ${
+                        selected ? 'bg-slate-800 text-blue-200' : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      Custom
+                    </span>
+                  )}
                 </button>
               );
             })}
+
+            <button
+              type="button"
+              onClick={() => setIsSourceModalOpen(true)}
+              className="px-3 py-1.5 min-h-[36px] text-xs font-semibold rounded-lg border border-dashed border-blue-300 text-blue-700 bg-blue-50/50 hover:bg-blue-50 hover:border-blue-400 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap"
+            >
+              <Plus className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              Add Custom Source
+            </button>
           </div>
         </form>
       </section>
@@ -237,7 +359,9 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           <div className="text-2xl font-bold text-slate-900 mt-1 tabular-nums font-mono">
             {counts.discovered}
           </div>
-          <div className="text-xs text-slate-500 mt-0.5">Across {ALL_SOURCES.length} sources</div>
+          <div className="text-xs text-slate-500 mt-0.5">
+            Across {state.customSources.length} sources ({state.customSources.filter((s) => !s.isDefault).length} custom)
+          </div>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4">
           <div className="text-xs font-medium text-slate-500">Channels Verified</div>
@@ -263,80 +387,175 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
       </section>
 
       {/* Client-side Filter & Grounding Toolbar */}
-      <section className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div
-            role="group"
-            aria-label="Filter by application channel"
-            className="inline-flex items-center gap-1 p-1 bg-slate-100 rounded-lg"
-          >
-            {(
-              [
-                { key: 'all', label: 'All Channels' },
-                { key: ChannelType.Email, label: 'Direct Email' },
-                { key: ChannelType.Form, label: 'Web Form' },
-              ] as const
-            ).map((tab) => {
-              const active = state.filters.channelFilter === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() =>
-                    dispatch({
-                      type: 'SET_FILTERS',
-                      filters: { channelFilter: tab.key },
-                    })
-                  }
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
-                    active
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
+      <section className="bg-white border border-slate-200 rounded-xl p-3 sm:p-4 space-y-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              role="group"
+              aria-label="Filter by application channel"
+              className="inline-flex items-center gap-1 p-1 bg-slate-100 rounded-lg"
+            >
+              {(
+                [
+                  { key: 'all', label: 'All Channels' },
+                  { key: ChannelType.Email, label: 'Direct Email' },
+                  { key: ChannelType.Form, label: 'Web Form' },
+                ] as const
+              ).map((tab) => {
+                const active = state.filters.channelFilter === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() =>
+                      dispatch({
+                        type: 'SET_FILTERS',
+                        filters: { channelFilter: tab.key },
+                      })
+                    }
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap ${
+                      active
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <select
+              aria-label="Filter by source provider"
+              value={state.filters.sourceFilter}
+              onChange={(e) =>
+                dispatch({
+                  type: 'SET_FILTERS',
+                  filters: { sourceFilter: e.target.value },
+                })
+              }
+              className="h-9 px-3 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-700"
+            >
+              <option value="all">All Sources</option>
+              {state.customSources.map((src) => (
+                <option key={src.id} value={src.name}>
+                  {src.name} {!src.isDefault ? '(Custom)' : ''}
+                </option>
+              ))}
+            </select>
+
+            <select
+              aria-label="Filter by stage duration"
+              value={
+                state.filters.minDurationFilter === 0 && state.filters.maxDurationFilter === 0
+                  ? 'all'
+                  : `${state.filters.minDurationFilter}-${state.filters.maxDurationFilter}`
+              }
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'all') {
+                  dispatch({
+                    type: 'SET_FILTERS',
+                    filters: { minDurationFilter: 0, maxDurationFilter: 0 },
+                  });
+                } else if (val === '1-3') {
+                  dispatch({
+                    type: 'SET_FILTERS',
+                    filters: { minDurationFilter: 1, maxDurationFilter: 3 },
+                  });
+                } else if (val === '4-5') {
+                  dispatch({
+                    type: 'SET_FILTERS',
+                    filters: { minDurationFilter: 4, maxDurationFilter: 5 },
+                  });
+                } else if (val === '6-6') {
+                  dispatch({
+                    type: 'SET_FILTERS',
+                    filters: { minDurationFilter: 6, maxDurationFilter: 6 },
+                  });
+                }
+              }}
+              className="h-9 px-3 text-xs font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-700"
+            >
+              <option value="all">Any Duration</option>
+              <option value="1-3">Short (1 - 3 months)</option>
+              <option value="4-5">Medium (4 - 5 months)</option>
+              <option value="6-6">Full 6 months (PFE)</option>
+            </select>
           </div>
 
-          <select
-            aria-label="Filter by source provider"
-            value={state.filters.sourceFilter}
-            onChange={(e) =>
-              dispatch({
-                type: 'SET_FILTERS',
-                filters: { sourceFilter: e.target.value as SourceProvider | 'all' },
-              })
-            }
-            className="h-9 px-3 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-700"
-          >
-            <option value="all">All Sources</option>
-            {ALL_SOURCES.map((src) => (
-              <option key={src} value={src}>
-                {src}
-              </option>
-            ))}
-          </select>
+          <div className="w-full lg:w-72">
+            <label htmlFor="filter-offers-text" className="sr-only">
+              Filter discovered offers
+            </label>
+            <input
+              id="filter-offers-text"
+              type="search"
+              value={state.filters.textFilter}
+              onChange={(e) =>
+                dispatch({
+                  type: 'SET_FILTERS',
+                  filters: { textFilter: e.target.value },
+                })
+              }
+              placeholder="Filter by company, skill, city..."
+              className="w-full h-9 px-3 text-xs text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-700"
+            />
+          </div>
         </div>
 
-        <div className="w-full sm:w-64">
-          <label htmlFor="filter-offers-text" className="sr-only">
-            Filter discovered offers
-          </label>
-          <input
-            id="filter-offers-text"
-            type="search"
-            value={state.filters.textFilter}
-            onChange={(e) =>
-              dispatch({
-                type: 'SET_FILTERS',
-                filters: { textFilter: e.target.value },
-              })
-            }
-            placeholder="Filter by company, skill, city..."
-            className="w-full h-9 px-3 text-xs text-slate-900 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-blue-700"
-          />
+        {/* Date Range Sub-row for Filtering */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs text-slate-600">
+          <span className="font-medium text-slate-700">Filter Start Date:</span>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="filter-date-from" className="text-slate-500">
+              From:
+            </label>
+            <input
+              id="filter-date-from"
+              type="date"
+              value={state.filters.dateRangeFrom}
+              onChange={(e) =>
+                dispatch({
+                  type: 'SET_FILTERS',
+                  filters: { dateRangeFrom: e.target.value },
+                })
+              }
+              className="h-8 px-2 text-xs text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-700"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="filter-date-to" className="text-slate-500">
+              To:
+            </label>
+            <input
+              id="filter-date-to"
+              type="date"
+              value={state.filters.dateRangeTo}
+              onChange={(e) =>
+                dispatch({
+                  type: 'SET_FILTERS',
+                  filters: { dateRangeTo: e.target.value },
+                })
+              }
+              className="h-8 px-2 text-xs text-slate-900 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-700"
+            />
+          </div>
+          {(state.filters.minDurationFilter > 0 ||
+            state.filters.maxDurationFilter > 0 ||
+            state.filters.dateRangeFrom ||
+            state.filters.dateRangeTo ||
+            state.filters.sourceFilter !== 'all' ||
+            state.filters.channelFilter !== 'all' ||
+            state.filters.textFilter) && (
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'RESET_FILTERS' })}
+              className="ml-auto text-xs font-medium text-blue-700 hover:underline min-h-[36px] flex items-center"
+            >
+              Clear all filters
+            </button>
+          )}
         </div>
       </section>
 
@@ -387,12 +606,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
             </p>
             <button
               type="button"
-              onClick={() =>
-                dispatch({
-                  type: 'SET_FILTERS',
-                  filters: { sourceFilter: 'all', channelFilter: 'all', textFilter: '' },
-                })
-              }
+              onClick={() => dispatch({ type: 'RESET_FILTERS' })}
               className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors"
             >
               Reset Filters
@@ -426,6 +640,16 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                         <span>{offer.workMode}</span>
                         <span aria-hidden="true">·</span>
                         <span className="tabular-nums font-mono">{offer.duration}</span>
+                        {offer.startDate && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span className="tabular-nums font-mono">
+                              {offer.endDate
+                                ? `${offer.startDate} to ${offer.endDate}`
+                                : `Start: ${offer.startDate}`}
+                            </span>
+                          </>
+                        )}
                         <span aria-hidden="true">·</span>
                         <span
                           className={`font-medium ${
@@ -507,6 +731,16 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
           </div>
         )}
       </section>
+
+      {/* Add & Manage Custom Sources Dialog */}
+      <AddCustomSourceModal
+        isOpen={isSourceModalOpen}
+        onClose={() => setIsSourceModalOpen(false)}
+        customSources={state.customSources}
+        onAddSource={(source) => dispatch({ type: 'ADD_CUSTOM_SOURCE', source })}
+        onRemoveSource={(sourceId) => dispatch({ type: 'REMOVE_CUSTOM_SOURCE', sourceId })}
+        onToggleSource={(sourceId) => dispatch({ type: 'TOGGLE_CUSTOM_SOURCE', sourceId })}
+      />
     </main>
   );
 };

@@ -37,6 +37,12 @@ const startServer = async () => {
         keywords,
         location: typeof body.location === 'string' ? body.location : 'Paris / Remote',
         duration: typeof body.duration === 'string' ? body.duration : '6 months',
+        minDurationMonths:
+          typeof body.minDurationMonths === 'number' ? body.minDurationMonths : undefined,
+        maxDurationMonths:
+          typeof body.maxDurationMonths === 'number' ? body.maxDurationMonths : undefined,
+        startDateFrom: typeof body.startDateFrom === 'string' ? body.startDateFrom : undefined,
+        startDateTo: typeof body.startDateTo === 'string' ? body.startDateTo : undefined,
         workMode: typeof body.workMode === 'string' ? body.workMode : 'all',
         sources: Array.isArray(body.sources) && body.sources.length > 0
           ? body.sources

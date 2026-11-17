@@ -4,6 +4,7 @@ import {
   AppError,
   AppState,
   CandidateProfile,
+  CustomSource,
   FilterState,
   InternshipOffer,
   PreparedDossier,
@@ -16,6 +17,13 @@ import {
   deduplicateOffers,
   filterOffers,
 } from '../modules/sourceAggregator';
+import {
+  DEFAULT_BUILTIN_SOURCES,
+  addCustomSource,
+  removeCustomSource,
+  toggleCustomSource,
+  updateCustomSource,
+} from '../modules/customSources';
 import { buildPreparedDossier } from '../modules/dossierComposer';
 
 export const DEFAULT_AVATAR_PATH = '/src/assets/images/avatar_candidate_profile_1794841530446.jpg';
@@ -94,18 +102,20 @@ export type AppAction =
       readonly sentAt: string;
       readonly notice: string;
     }
-  | {
-      readonly type: 'SET_OFFER_STATUS';
-      readonly offerId: string;
-      readonly status: ApplicationStatus;
-    }
+  | { readonly type: 'SET_OFFER_STATUS'; readonly offerId: string; readonly status: ApplicationStatus }
+  | { readonly type: 'RESET_FILTERS' }
+  | { readonly type: 'ADD_CUSTOM_SOURCE'; readonly source: CustomSource }
+  | { readonly type: 'REMOVE_CUSTOM_SOURCE'; readonly sourceId: string }
+  | { readonly type: 'TOGGLE_CUSTOM_SOURCE'; readonly sourceId: string }
+  | { readonly type: 'UPDATE_CUSTOM_SOURCE'; readonly sourceId: string; readonly patch: Partial<CustomSource> }
   | { readonly type: 'ADD_ERROR'; readonly error: AppError }
   | { readonly type: 'DISMISS_ERROR'; readonly id: string }
   | { readonly type: 'CLEAR_NOTICE' };
 
 export const createInitialState = (
   seedProfile: CandidateProfile = DEFAULT_CANDIDATE_PROFILE,
-  seedOffers: readonly InternshipOffer[] = DEFAULT_SEED_OFFERS
+  seedOffers: readonly InternshipOffer[] = DEFAULT_SEED_OFFERS,
+  seedCustomSources: readonly CustomSource[] = DEFAULT_BUILTIN_SOURCES
 ): AppState => {
   const firstReadyOffer = seedOffers[0];
   const initialDossiers: Record<string, PreparedDossier> = firstReadyOffer
@@ -114,12 +124,20 @@ export const createInitialState = (
 
   return {
     profile: seedProfile,
-    searchQuery: DEFAULT_SEARCH_QUERY,
+    searchQuery: {
+      ...DEFAULT_SEARCH_QUERY,
+      sources: seedCustomSources.filter((s) => s.enabled).map((s) => s.name),
+    },
     filters: {
       sourceFilter: 'all',
       channelFilter: 'all',
       textFilter: '',
+      minDurationFilter: 0,
+      maxDurationFilter: 0,
+      dateRangeFrom: '',
+      dateRangeTo: '',
     },
+    customSources: seedCustomSources,
     offers: seedOffers,
     dossiers: initialDossiers,
     isSearching: false,
@@ -156,6 +174,93 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
           ...action.filters,
         },
       };
+
+    case 'RESET_FILTERS':
+      return {
+        ...state,
+        filters: {
+          sourceFilter: 'all',
+          channelFilter: 'all',
+          textFilter: '',
+          minDurationFilter: 0,
+          maxDurationFilter: 0,
+          dateRangeFrom: '',
+          dateRangeTo: '',
+        },
+      };
+
+    case 'ADD_CUSTOM_SOURCE': {
+      const nextCustomSources = addCustomSource(state.customSources, action.source);
+      const nextSearchSources = state.searchQuery.sources.includes(action.source.name)
+        ? state.searchQuery.sources
+        : [...state.searchQuery.sources, action.source.name];
+
+      return {
+        ...state,
+        customSources: nextCustomSources,
+        searchQuery: {
+          ...state.searchQuery,
+          sources: nextSearchSources,
+        },
+      };
+    }
+
+    case 'REMOVE_CUSTOM_SOURCE': {
+      const target = state.customSources.find((s) => s.id === action.sourceId);
+      const nextCustomSources = removeCustomSource(state.customSources, action.sourceId);
+      const nextSearchSources = target
+        ? state.searchQuery.sources.filter((name) => name !== target.name)
+        : state.searchQuery.sources;
+      const nextSourceFilter =
+        target && state.filters.sourceFilter === target.name ? 'all' : state.filters.sourceFilter;
+
+      return {
+        ...state,
+        customSources: nextCustomSources,
+        searchQuery: {
+          ...state.searchQuery,
+          sources: nextSearchSources,
+        },
+        filters: {
+          ...state.filters,
+          sourceFilter: nextSourceFilter,
+        },
+      };
+    }
+
+    case 'TOGGLE_CUSTOM_SOURCE': {
+      const nextCustomSources = toggleCustomSource(state.customSources, action.sourceId);
+      const target = nextCustomSources.find((s) => s.id === action.sourceId);
+      let nextSearchSources = state.searchQuery.sources;
+      if (target) {
+        if (target.enabled && !nextSearchSources.includes(target.name)) {
+          nextSearchSources = [...nextSearchSources, target.name];
+        } else if (!target.enabled && nextSearchSources.includes(target.name)) {
+          nextSearchSources = nextSearchSources.filter((name) => name !== target.name);
+        }
+      }
+
+      return {
+        ...state,
+        customSources: nextCustomSources,
+        searchQuery: {
+          ...state.searchQuery,
+          sources: nextSearchSources,
+        },
+      };
+    }
+
+    case 'UPDATE_CUSTOM_SOURCE': {
+      const nextCustomSources = updateCustomSource(
+        state.customSources,
+        action.sourceId,
+        action.patch
+      );
+      return {
+        ...state,
+        customSources: nextCustomSources,
+      };
+    }
 
     case 'SEARCH_STARTED':
       return {
@@ -406,6 +511,7 @@ export const serializePersistedState = (state: AppState): string =>
   JSON.stringify({
     profile: state.profile,
     searchQuery: state.searchQuery,
+    customSources: state.customSources,
     offers: state.offers,
     dossiers: state.dossiers,
   });
@@ -417,12 +523,16 @@ export const hydratePersistedState = (raw: string | null): AppState => {
   }
   try {
     const parsed = JSON.parse(raw) as Partial<
-      Pick<AppState, 'profile' | 'searchQuery' | 'offers' | 'dossiers'>
+      Pick<AppState, 'profile' | 'searchQuery' | 'customSources' | 'offers' | 'dossiers'>
     >;
     return {
       ...base,
       profile: parsed.profile?.fullName ? parsed.profile : base.profile,
       searchQuery: parsed.searchQuery?.keywords ? parsed.searchQuery : base.searchQuery,
+      customSources:
+        Array.isArray(parsed.customSources) && parsed.customSources.length > 0
+          ? parsed.customSources
+          : base.customSources,
       offers: Array.isArray(parsed.offers) && parsed.offers.length > 0 ? parsed.offers : base.offers,
       dossiers: parsed.dossiers && typeof parsed.dossiers === 'object' ? parsed.dossiers : base.dossiers,
     };

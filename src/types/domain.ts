@@ -67,6 +67,19 @@ export interface ApplicationChannel {
   readonly sourceUrl?: string;
 }
 
+export interface CustomSource {
+  readonly id: string;
+  readonly name: string;
+  readonly baseUrl: string;
+  readonly searchUrlTemplate?: string;
+  readonly description?: string;
+  readonly enabled: boolean;
+  readonly isDefault: boolean;
+  readonly createdAt: string;
+}
+
+export type SourceIdentifier = SourceProvider | string;
+
 export interface InternshipOffer {
   readonly id: string;
   readonly title: string;
@@ -75,7 +88,10 @@ export interface InternshipOffer {
   readonly location: string;
   readonly workMode: WorkMode;
   readonly duration: string;
-  readonly source: SourceProvider;
+  readonly durationMonths: number;
+  readonly startDate?: string;
+  readonly endDate?: string;
+  readonly source: SourceIdentifier;
   readonly sourceUrl: string;
   readonly postedDate: string;
   readonly description: string;
@@ -103,8 +119,12 @@ export interface SearchQuery {
   readonly keywords: string;
   readonly location: string;
   readonly duration: string;
+  readonly minDurationMonths: number;
+  readonly maxDurationMonths: number;
+  readonly startDateFrom: string;
+  readonly startDateTo: string;
   readonly workMode: WorkMode | 'all';
-  readonly sources: readonly SourceProvider[];
+  readonly sources: readonly string[];
 }
 
 export interface AppError {
@@ -128,15 +148,20 @@ export type AppRoute =
   | { readonly name: 'profile'; readonly path: '/cv' };
 
 export interface FilterState {
-  readonly sourceFilter: SourceProvider | 'all';
+  readonly sourceFilter: string | 'all';
   readonly channelFilter: ChannelType | 'all';
   readonly textFilter: string;
+  readonly minDurationFilter: number;
+  readonly maxDurationFilter: number;
+  readonly dateRangeFrom: string;
+  readonly dateRangeTo: string;
 }
 
 export interface AppState {
   readonly profile: CandidateProfile;
   readonly searchQuery: SearchQuery;
   readonly filters: FilterState;
+  readonly customSources: readonly CustomSource[];
   readonly offers: readonly InternshipOffer[];
   readonly dossiers: Readonly<Record<string, PreparedDossier>>;
   readonly isSearching: boolean;

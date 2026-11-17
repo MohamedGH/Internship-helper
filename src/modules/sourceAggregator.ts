@@ -1,6 +1,7 @@
 import {
   ApplicationStatus,
   ChannelType,
+  CustomSource,
   FilterState,
   InternshipOffer,
   SearchQuery,
@@ -9,7 +10,7 @@ import {
 } from '../types/domain';
 import { normalizeChannelsFromRaw } from './channelFinder';
 
-export const ALL_SOURCES: readonly SourceProvider[] = [
+export const ALL_SOURCES: readonly string[] = [
   SourceProvider.WelcomeToTheJungle,
   SourceProvider.LinkedIn,
   SourceProvider.Indeed,
@@ -22,6 +23,10 @@ export const DEFAULT_SEARCH_QUERY: SearchQuery = {
   keywords: 'Full-Stack Software Engineer Stage',
   location: 'Paris / Remote',
   duration: '6 months',
+  minDurationMonths: 3,
+  maxDurationMonths: 6,
+  startDateFrom: '2027-02-01',
+  startDateTo: '2027-09-01',
   workMode: 'all',
   sources: ALL_SOURCES,
 };
@@ -36,6 +41,9 @@ export const DEFAULT_SEED_OFFERS: readonly InternshipOffer[] = [
     location: 'Paris, France',
     workMode: WorkMode.Hybrid,
     duration: '6 months',
+    durationMonths: 6,
+    startDate: '2027-02-01',
+    endDate: '2027-07-31',
     source: SourceProvider.WelcomeToTheJungle,
     sourceUrl: 'https://www.welcometothejungle.com/fr/companies/alan/jobs',
     postedDate: '2026-11-14',
@@ -71,7 +79,10 @@ export const DEFAULT_SEED_OFFERS: readonly InternshipOffer[] = [
       'Frontier AI lab based in Paris building open and enterprise language models and developer studio interfaces.',
     location: 'Paris, France',
     workMode: WorkMode.OnSite,
-    duration: '6 months',
+    duration: '6 mois',
+    durationMonths: 6,
+    startDate: '2027-03-01',
+    endDate: '2027-08-31',
     source: SourceProvider.CompanyCareer,
     sourceUrl: 'https://mistral.ai/careers',
     postedDate: '2026-11-15',
@@ -99,6 +110,9 @@ export const DEFAULT_SEED_OFFERS: readonly InternshipOffer[] = [
     location: 'Paris / Remote FR',
     workMode: WorkMode.Hybrid,
     duration: '6 months',
+    durationMonths: 6,
+    startDate: '2027-02-15',
+    endDate: '2027-08-15',
     source: SourceProvider.LinkedIn,
     sourceUrl: 'https://www.linkedin.com/jobs/',
     postedDate: '2026-11-12',
@@ -133,7 +147,10 @@ export const DEFAULT_SEED_OFFERS: readonly InternshipOffer[] = [
       'Healthcare technology company transforming patient scheduling and practitioner workflows across France, Germany, and Italy.',
     location: 'Levallois-Perret, France',
     workMode: WorkMode.Hybrid,
-    duration: '6 months',
+    duration: '6 mois',
+    durationMonths: 6,
+    startDate: '2027-04-01',
+    endDate: '2027-09-30',
     source: SourceProvider.HelloWork,
     sourceUrl: 'https://www.hellowork.com/',
     postedDate: '2026-11-11',
@@ -159,7 +176,10 @@ export const DEFAULT_SEED_OFFERS: readonly InternshipOffer[] = [
       'Cloud-scale monitoring and security platform with a major R&D engineering hub in Paris.',
     location: 'Paris, France',
     workMode: WorkMode.OnSite,
-    duration: '6 months',
+    duration: '4 months',
+    durationMonths: 4,
+    startDate: '2027-05-01',
+    endDate: '2027-08-31',
     source: SourceProvider.Indeed,
     sourceUrl: 'https://fr.indeed.com/',
     postedDate: '2026-11-10',
@@ -192,7 +212,10 @@ export const DEFAULT_SEED_OFFERS: readonly InternshipOffer[] = [
       'Global marketplace for refurbished tech dedicated to extending device lifespans with clean engineering.',
     location: 'Paris / Bordeaux',
     workMode: WorkMode.Remote,
-    duration: '6 months',
+    duration: '3 months',
+    durationMonths: 3,
+    startDate: '2027-06-01',
+    endDate: '2027-08-31',
     source: SourceProvider.JobTeaser,
     sourceUrl: 'https://www.jobteaser.com/',
     postedDate: '2026-11-09',
@@ -212,8 +235,29 @@ export const DEFAULT_SEED_OFFERS: readonly InternshipOffer[] = [
   },
 ];
 
-export const mapRawSourceName = (raw: string | undefined): SourceProvider => {
-  const lower = (raw ?? '').toLowerCase();
+export const mapRawSourceName = (
+  raw: string | undefined,
+  customSources?: readonly CustomSource[]
+): string => {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) return SourceProvider.CompanyCareer;
+
+  if (customSources && customSources.length > 0) {
+    const rawLower = trimmed.toLowerCase();
+    const matchedCustom = customSources.find((cs) => {
+      const csLower = cs.name.toLowerCase().trim();
+      if (csLower === rawLower || rawLower.includes(csLower) || csLower.includes(rawLower)) {
+        return true;
+      }
+      const words = csLower.split(/[^a-z0-9]+/).filter((w) => w.length > 3 && w !== 'jobs');
+      return words.length > 0 && words.some((word) => rawLower.includes(word));
+    });
+    if (matchedCustom) {
+      return matchedCustom.name;
+    }
+  }
+
+  const lower = trimmed.toLowerCase();
   if (lower.includes('welcome') || lower.includes('wttj')) {
     return SourceProvider.WelcomeToTheJungle;
   }
@@ -221,7 +265,9 @@ export const mapRawSourceName = (raw: string | undefined): SourceProvider => {
   if (lower.includes('indeed')) return SourceProvider.Indeed;
   if (lower.includes('hellowork') || lower.includes('regionsjob')) return SourceProvider.HelloWork;
   if (lower.includes('jobteaser')) return SourceProvider.JobTeaser;
-  return SourceProvider.CompanyCareer;
+  if (lower.includes('career') || lower.includes('entreprise')) return SourceProvider.CompanyCareer;
+
+  return trimmed;
 };
 
 export const mapRawWorkMode = (raw: string | undefined): WorkMode => {
@@ -235,6 +281,56 @@ export const mapRawWorkMode = (raw: string | undefined): WorkMode => {
   return WorkMode.OnSite;
 };
 
+export const parseDurationMonths = (durationStr?: string): number => {
+  if (!durationStr) return 6;
+  const lower = durationStr.toLowerCase().trim();
+  const rangeMatch = lower.match(/(\d+)\s*(?:à|-|to)\s*(\d+)\s*(?:mois|months?|m\b)?/);
+  if (rangeMatch && rangeMatch[2]) {
+    return parseInt(rangeMatch[2], 10);
+  }
+  const singleMatch = lower.match(/(\d+)\s*(?:mois|months?|m\b)?/);
+  if (singleMatch && singleMatch[1]) {
+    const val = parseInt(singleMatch[1], 10);
+    if (lower.includes('semaine') || lower.includes('week')) {
+      return Math.round(val / 4.3) || 1;
+    }
+    return val;
+  }
+  return 6;
+};
+
+export const isOfferWithinDuration = (
+  durationMonths: number,
+  minMonths: number,
+  maxMonths: number
+): boolean => {
+  if (minMonths > 0 && durationMonths < minMonths) {
+    return false;
+  }
+  if (maxMonths > 0 && durationMonths > maxMonths) {
+    return false;
+  }
+  return true;
+};
+
+export const isOfferWithinDateRange = (
+  offerStartDate: string | undefined,
+  dateFrom: string,
+  dateTo: string
+): boolean => {
+  if (!dateFrom && !dateTo) return true;
+  if (!offerStartDate) return true;
+
+  const offerStart = offerStartDate.trim().slice(0, 10);
+  if (dateFrom && offerStart < dateFrom.slice(0, 10)) {
+    return false;
+  }
+  if (dateTo && offerStart > dateTo.slice(0, 10)) {
+    return false;
+  }
+  return true;
+};
+
 export interface RawOfferInput {
   readonly id?: string;
   readonly title: string;
@@ -243,6 +339,9 @@ export interface RawOfferInput {
   readonly location?: string;
   readonly workMode?: string;
   readonly duration?: string;
+  readonly durationMonths?: number;
+  readonly startDate?: string;
+  readonly endDate?: string;
   readonly source?: string;
   readonly sourceUrl?: string;
   readonly postedDate?: string;
@@ -253,7 +352,11 @@ export interface RawOfferInput {
   readonly contactName?: string;
 }
 
-export const normalizeOffer = (raw: RawOfferInput, index: number): InternshipOffer => {
+export const normalizeOffer = (
+  raw: RawOfferInput,
+  index: number,
+  customSources?: readonly CustomSource[]
+): InternshipOffer => {
   const slug = `${raw.organization}_${raw.title}`
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
@@ -287,6 +390,10 @@ export const normalizeOffer = (raw: RawOfferInput, index: number): InternshipOff
   }
 
   const channels = normalizeChannelsFromRaw(id, rawChannels, sourceUrl);
+  const durationMonths =
+    typeof raw.durationMonths === 'number' && raw.durationMonths > 0
+      ? raw.durationMonths
+      : parseDurationMonths(raw.duration);
 
   return {
     id,
@@ -296,8 +403,11 @@ export const normalizeOffer = (raw: RawOfferInput, index: number): InternshipOff
       raw.organizationSummary?.trim() || `${raw.organization.trim()} engineering and product team.`,
     location: raw.location?.trim() || 'France / Remote',
     workMode: mapRawWorkMode(raw.workMode),
-    duration: raw.duration?.trim() || '6 months',
-    source: mapRawSourceName(raw.source),
+    duration: raw.duration?.trim() || `${durationMonths} months`,
+    durationMonths,
+    startDate: raw.startDate?.trim() || '2027-02-01',
+    endDate: raw.endDate?.trim(),
+    source: mapRawSourceName(raw.source, customSources),
     sourceUrl,
     postedDate: raw.postedDate?.trim() || new Date().toISOString().slice(0, 10),
     description:
@@ -359,6 +469,20 @@ export const filterOffers = (
       return false;
     }
 
+    if (
+      !isOfferWithinDuration(
+        offer.durationMonths,
+        filters.minDurationFilter,
+        filters.maxDurationFilter
+      )
+    ) {
+      return false;
+    }
+
+    if (!isOfferWithinDateRange(offer.startDate, filters.dateRangeFrom, filters.dateRangeTo)) {
+      return false;
+    }
+
     if (query.length > 0) {
       const haystack = [
         offer.title,
@@ -391,6 +515,22 @@ export const validateSearchQuery = (
     return {
       valid: false,
       message: 'Select at least one internship source to search.',
+    };
+  }
+  if (
+    query.minDurationMonths > 0 &&
+    query.maxDurationMonths > 0 &&
+    query.minDurationMonths > query.maxDurationMonths
+  ) {
+    return {
+      valid: false,
+      message: 'Minimum duration cannot exceed maximum duration.',
+    };
+  }
+  if (query.startDateFrom && query.startDateTo && query.startDateFrom > query.startDateTo) {
+    return {
+      valid: false,
+      message: 'Start date range "From" cannot be after "To".',
     };
   }
   return { valid: true };

@@ -95,7 +95,7 @@ export const AppStateProvider: React.FC<{ readonly children: React.ReactNode }> 
 
         const normalized = (payload.offers ?? [])
           .filter((item) => item && item.title && item.organization)
-          .map((item, idx) => normalizeOffer(item, idx));
+          .map((item, idx) => normalizeOffer(item, idx, state.customSources));
 
         if (normalized.length === 0) {
           dispatch({

@@ -154,9 +154,15 @@ export const ReviewQueueView: React.FC<ReviewQueueViewProps> = ({
                       <span aria-hidden="true">·</span>
                       <span>{offer.source}</span>
                       <span aria-hidden="true">·</span>
-                      <span>{offer.location}</span>
-                      <span aria-hidden="true">·</span>
                       <span className="font-mono tabular-nums">{offer.duration}</span>
+                      {offer.startDate && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="font-mono tabular-nums">
+                            {offer.endDate ? `${offer.startDate} to ${offer.endDate}` : `Start: ${offer.startDate}`}
+                          </span>
+                        </>
+                      )}
                     </div>
 
                     <h2 className="font-display text-lg font-semibold text-slate-900">

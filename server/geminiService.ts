@@ -3,7 +3,11 @@ import { GoogleGenAI, Type } from '@google/genai';
 export interface SearchRequestPayload {
   keywords: string;
   location: string;
-  duration: string;
+  duration?: string;
+  minDurationMonths?: number;
+  maxDurationMonths?: number;
+  startDateFrom?: string;
+  startDateTo?: string;
   workMode: string;
   sources: string[];
 }
@@ -15,6 +19,9 @@ export interface DiscoveredOfferPayload {
   location: string;
   workMode: string;
   duration: string;
+  durationMonths?: number;
+  startDate?: string;
+  endDate?: string;
   source: string;
   sourceUrl: string;
   postedDate: string;
@@ -108,17 +115,27 @@ export const searchInternshipsWithGemini = async (
   const ai = createGeminiClient();
   const sourcesList = query.sources.join(', ');
 
+  const durationDesc =
+    query.minDurationMonths && query.maxDurationMonths
+      ? `${query.minDurationMonths} to ${query.maxDurationMonths} months`
+      : query.duration || '6 months';
+  const dateRangeDesc =
+    query.startDateFrom || query.startDateTo
+      ? `Starting between ${query.startDateFrom || 'anytime'} and ${query.startDateTo || 'anytime'}`
+      : 'Starting upcoming semester / anytime';
+
   const prompt = [
     `Find real, current internship / stage opportunities matching:`,
     `- Role / Keywords: ${query.keywords}`,
     `- Location: ${query.location || 'France / Remote'}`,
-    `- Duration: ${query.duration || '6 months'}`,
+    `- Duration range: ${durationDesc}`,
+    `- Date range / Start period: ${dateRangeDesc}`,
     `- Work mode preference: ${query.workMode || 'all'}`,
     `- Target sources to search across: ${sourcesList}`,
     ``,
     `Return ONLY a valid JSON array (no markdown commentary outside JSON) of 5 to 7 distinct internship offers.`,
     `Each item must have keys:`,
-    `"title", "organization", "organizationSummary", "location", "workMode" ("On-site" | "Hybrid" | "Remote"), "duration", "source" (one of ${sourcesList}), "sourceUrl" (real URL from search), "postedDate" (YYYY-MM-DD), "description" (concise 2-sentence summary), "requirements" (array of 3-5 key skills), "applicationEmail" (direct recruiting/campus email if found, else empty string), "applicationFormUrl" (official career or ATS application URL if found), "contactName" (optional recruiter or team name).`,
+    `"title", "organization", "organizationSummary", "location", "workMode" ("On-site" | "Hybrid" | "Remote"), "duration" (e.g. "6 months" or "4 à 6 mois"), "durationMonths" (number of months, integer), "startDate" (estimated start date YYYY-MM-DD or start month), "endDate" (estimated end date YYYY-MM-DD or end month), "source" (one of ${sourcesList}), "sourceUrl" (real URL from search), "postedDate" (YYYY-MM-DD), "description" (concise 2-sentence summary), "requirements" (array of 3-5 key skills), "applicationEmail" (direct recruiting/campus email if found, else empty string), "applicationFormUrl" (official career or ATS application URL if found), "contactName" (optional recruiter or team name).`,
   ].join('\n');
 
   const response = await ai.models.generateContent({

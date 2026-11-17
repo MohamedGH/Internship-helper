@@ -245,9 +245,15 @@ export const DossierStudioView: React.FC<DossierStudioViewProps> = ({
           <span aria-hidden="true">·</span>
           <span>{offer.location}</span>
           <span aria-hidden="true">·</span>
-          <span>{offer.workMode}</span>
-          <span aria-hidden="true">·</span>
           <span className="font-mono tabular-nums">{offer.duration}</span>
+          {offer.startDate && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="font-mono tabular-nums">
+                {offer.endDate ? `${offer.startDate} to ${offer.endDate}` : `Start: ${offer.startDate}`}
+              </span>
+            </>
+          )}
           <span aria-hidden="true">·</span>
           <span
             className={`font-semibold ${
