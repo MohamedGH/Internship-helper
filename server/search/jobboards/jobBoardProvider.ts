@@ -77,7 +77,7 @@ export const mapDiscoveryHitToRawOffer = (
   const raw: RawScrapedOffer = {
     title: cleanTitle || withoutBoardSuffix || hit.title,
     organization: orgMatch?.trim() || sourceName,
-    organizationSummary: `Discovered via external search index (${hit.discoveryProvider}) on ${hit.domain}. Verify full details on the original listing.`,
+    organizationSummary: null,
     location: null,
     workMode: null,
     contractType: /\b(stage|intern|internship|pfe)\b/i.test(`${hit.title} ${hit.snippet}`)
@@ -88,12 +88,13 @@ export const mapDiscoveryHitToRawOffer = (
     postedDate: hit.publishedDate ?? null,
     startDate: null,
     endDate: null,
-    description: hit.snippet || `External link discovered on ${hit.domain}.`,
+    description: hit.snippet ? hit.snippet : null,
     originalUrl: hit.url,
     applicationUrl: null,
     applicationEmail: null,
     source: sourceName,
     isExternalDiscovery: true,
+    contentAccessible: false,
     collectionMode: 'discovered',
     accessMode: boardConfig?.accessMode ?? 'search_index',
   };

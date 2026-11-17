@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CandidateProfile } from '../types/domain';
+import { CandidateProfile, ChannelType } from '../types/domain';
 import { normalizeOffer } from './sourceAggregator';
 import { buildPreparedDossier } from './dossierComposer';
 import {
@@ -40,19 +40,46 @@ const buildDispatchTestOffer = () =>
       sourceUrl: 'https://jobs.lever.co/orgdispatch',
       applicationEmail: 'stages-tech@orgdispatch.example',
       applicationFormUrl: 'https://jobs.lever.co/orgdispatch/apply',
+      description: 'Develop TypeScript and React interfaces for internal product workflows.',
       requirements: ['TypeScript', 'React'],
     },
     0
   );
 
-test('evaluatePreFlightChecks passes when profile, dossier, and channel are valid', () => {
+test('evaluatePreFlightChecks passes when profile, dossier, and verified channel are valid', () => {
   const offer = buildDispatchTestOffer();
   const dossier = buildPreparedDossier(offer, profile, 'fr');
   const report = evaluatePreFlightChecks(offer, profile, dossier);
 
   assert.equal(report.readyToSend, true);
+  assert.equal(report.channelVerified, true);
   assert.equal(report.checks.every((c) => c.passed), true);
   assert.equal(report.selectedChannel?.target, 'stages-tech@orgdispatch.example');
+});
+
+test('evaluatePreFlightChecks blocks unverified syntax-only email contact from dispatch', () => {
+  const baseOffer = buildDispatchTestOffer();
+  const unverifiedChannelOffer = {
+    ...baseOffer,
+    channels: [
+      {
+        id: 'ch_unver',
+        type: ChannelType.Email,
+        target: 'guess@orgdispatch.example',
+        label: 'Unverified guess',
+        verified: false,
+        verificationStatus: 'candidate_syntax_only' as const,
+      },
+    ],
+  };
+  const dossier = {
+    ...buildPreparedDossier(unverifiedChannelOffer, profile, 'fr'),
+    selectedChannelId: 'ch_unver',
+  };
+  const report = evaluatePreFlightChecks(unverifiedChannelOffer, profile, dossier);
+  assert.equal(report.readyToSend, false);
+  assert.equal(report.channelVerified, false);
+  assert.match(report.blockingReason ?? '', /NOT verified/i);
 });
 
 test('evaluatePreFlightChecks blocks when dossier is missing or profile incomplete', () => {
@@ -64,12 +91,15 @@ test('evaluatePreFlightChecks blocks when dossier is missing or profile incomple
   assert.ok(report.blockingReason);
 });
 
-test('buildDispatchBundle produces mailto URI for email channel and form URL for ATS channel', () => {
+test('buildDispatchBundle uses concise emailBody in mailto URI and form URL for ATS channel', () => {
   const offer = buildDispatchTestOffer();
   const emailDossier = buildPreparedDossier(offer, profile, 'fr');
   const emailBundle = buildDispatchBundle(offer, profile, emailDossier);
   assert.equal(emailBundle?.mode, 'mailto');
   assert.ok(emailBundle?.launchUri.startsWith('mailto:stages-tech%40orgdispatch.example?'));
+  assert.ok(emailBundle?.launchUri.includes('pi%C3%A8ces%20jointes'));
+  // Ensure mailto URI sends the concise email, not the formal cover letter salutation
+  assert.equal(emailBundle?.launchUri.includes('salutations%20distingu'), false);
 
   const formChannel = offer.channels.find((ch) => ch.target.includes('lever.co'));
   assert.ok(formChannel);
@@ -83,19 +113,20 @@ test('buildDispatchBundle produces mailto URI for email channel and form URL for
   assert.ok(clip.includes('Subject:'));
 });
 
-test('evaluatePreFlightChecks blocks externally_unverified and expired offers from one-click send', () => {
+test('evaluatePreFlightChecks blocks externally_unverified, inaccessible, and expired offers', () => {
   const baseOffer = buildDispatchTestOffer();
   const dossier = buildPreparedDossier(baseOffer, profile, 'fr');
 
   const unverifiedOffer = {
     ...baseOffer,
     collectionMode: 'discovered' as const,
+    contentAccessible: false,
     verificationLevel: 'externally_unverified' as const,
     verificationStatus: 'externally_unverified' as const,
   };
   const unverifiedReport = evaluatePreFlightChecks(unverifiedOffer, profile, dossier);
   assert.equal(unverifiedReport.readyToSend, false);
-  assert.match(unverifiedReport.blockingReason ?? '', /unverified external/i);
+  assert.match(unverifiedReport.blockingReason ?? '', /not accessible|unverified/i);
 
   const expiredOffer = {
     ...baseOffer,
@@ -106,4 +137,3 @@ test('evaluatePreFlightChecks blocks externally_unverified and expired offers fr
   assert.equal(expiredReport.readyToSend, false);
   assert.match(expiredReport.blockingReason ?? '', /expired/i);
 });
-

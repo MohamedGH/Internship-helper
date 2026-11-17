@@ -257,3 +257,79 @@ export const extractJobPostingsFromJsonLd = (
 
   return offers;
 };
+
+export interface JsonLdApplicationContactInfo {
+  readonly emails: readonly { readonly email: string; readonly contactName?: string }[];
+  readonly applyUrls: readonly string[];
+  readonly organizationUrls: readonly string[];
+}
+
+export const extractApplicationContactsFromJsonLd = (
+  html: string,
+  pageUrl: string
+): JsonLdApplicationContactInfo => {
+  const $ = cheerio.load(html);
+  const emails: Array<{ email: string; contactName?: string }> = [];
+  const seenEmails = new Set<string>();
+  const applyUrls = new Set<string>();
+  const organizationUrls = new Set<string>();
+
+  $('script[type="application/ld+json"]').each((_idx, el) => {
+    const rawJson = $(el).text().trim();
+    if (!rawJson) return;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rawJson);
+    } catch {
+      return;
+    }
+
+    const postings = flattenJsonLdNodes(parsed);
+    for (const node of postings) {
+      const contact = node.applicationContact as Record<string, unknown> | undefined;
+      if (contact && typeof contact === 'object') {
+        const contactName =
+          typeof contact.name === 'string' && contact.name.trim()
+            ? contact.name.trim()
+            : undefined;
+        if (typeof contact.email === 'string' && contact.email.includes('@')) {
+          const email = contact.email.trim().toLowerCase();
+          if (!seenEmails.has(email)) {
+            seenEmails.add(email);
+            emails.push({ email, contactName });
+          }
+        }
+        if (typeof contact.url === 'string' && contact.url.trim()) {
+          applyUrls.add(resolveUrl(contact.url, pageUrl));
+        }
+      }
+
+      const orgNode = node.hiringOrganization as Record<string, unknown> | undefined;
+      if (orgNode && typeof orgNode === 'object') {
+        if (typeof orgNode.url === 'string' && orgNode.url.trim()) {
+          const resolved = resolveUrl(orgNode.url, pageUrl);
+          if (resolved.startsWith('http')) organizationUrls.add(resolved);
+        }
+        if (typeof orgNode.sameAs === 'string' && orgNode.sameAs.trim()) {
+          const resolved = resolveUrl(orgNode.sameAs, pageUrl);
+          if (resolved.startsWith('http')) organizationUrls.add(resolved);
+        } else if (Array.isArray(orgNode.sameAs)) {
+          for (const item of orgNode.sameAs) {
+            if (typeof item === 'string' && item.trim()) {
+              const resolved = resolveUrl(item, pageUrl);
+              if (resolved.startsWith('http')) organizationUrls.add(resolved);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  return {
+    emails,
+    applyUrls: Array.from(applyUrls),
+    organizationUrls: Array.from(organizationUrls),
+  };
+};
+

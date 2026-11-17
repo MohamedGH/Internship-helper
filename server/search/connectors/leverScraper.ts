@@ -21,6 +21,8 @@ export const DEFAULT_LEVER_BOARDS: readonly LeverTargetBoard[] = [
   { slug: 'swile', organization: 'Swile' },
   { slug: 'qonto', organization: 'Qonto' },
   { slug: 'blablacar', organization: 'BlaBlaCar' },
+  { slug: 'ledger', organization: 'Ledger' },
+  { slug: 'shift-technology', organization: 'Shift Technology' },
 ];
 
 const leverCache = createTtlCache<readonly RawScrapedOffer[]>(5 * 60 * 1000);
@@ -97,7 +99,7 @@ export const parseLeverPostingsPayload = (
     offers.push({
       title,
       organization,
-      organizationSummary: `${organization} — Official Lever ATS job board.`,
+      organizationSummary: null,
       location,
       workMode: workplaceType,
       contractType:

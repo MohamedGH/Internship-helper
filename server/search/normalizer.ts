@@ -209,19 +209,17 @@ export const normalizeScrapedOffer = (
             ? 'search_index'
             : 'custom_html');
 
-  const summaryFallback =
-    verification.collectionMode === 'discovered'
-      ? `${organization} — discovered via ${raw.source} external search link (unverified on source portal).`
-      : `${organization} — ${raw.source} verified career listing.`;
+  const contentAccessible =
+    raw.contentAccessible ?? verification.collectionMode === 'collected';
 
   return {
     id: buildDeterministicOfferId(raw, verification.normalizedOriginalUrl),
     externalId: raw.externalId?.trim() || null,
     title,
     organization,
-    organizationSummary: raw.organizationSummary?.trim() || summaryFallback,
-    description:
-      description || `${title} at ${organization} (source: ${raw.source}).`,
+    organizationSummary: raw.organizationSummary?.trim() || null,
+    description: description || '',
+    contentAccessible,
     location,
     workMode,
     contractType,

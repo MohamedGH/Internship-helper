@@ -50,10 +50,27 @@ export enum ChannelType {
   Portal = 'portal',
 }
 
+export type ChannelRole =
+  | 'direct_form'
+  | 'recruiting_email'
+  | 'hr_contact'
+  | 'recruiter_contact'
+  | 'official_career_page'
+  | 'company_contact_form';
+
+export type ChannelVerificationStatus =
+  | 'verified_published'
+  | 'verified_ats_form'
+  | 'candidate_syntax_only'
+  | 'unverified';
+
+export type ChannelRelevance = 'high' | 'medium' | 'low';
+
 export enum ApplicationStatus {
   Discovered = 'discovered',
   Drafting = 'drafting',
   Ready = 'ready',
+  Opened = 'opened',
   Sent = 'sent',
   Interview = 'interview',
   Archived = 'archived',
@@ -92,10 +109,14 @@ export interface ApplicationChannel {
   readonly id: string;
   readonly type: ChannelType;
   readonly target: string; // email address or URL
-  readonly label: string; // e.g. "Recruiting Inbox", "WelcomeKit Form", "Greenhouse ATS"
+  readonly label: string; // e.g. "Recruiting Inbox", "Greenhouse Application Form"
+  readonly channelRole?: ChannelRole;
   readonly contactName?: string;
   readonly verified: boolean;
+  readonly verificationStatus?: ChannelVerificationStatus;
+  readonly relevance?: ChannelRelevance;
   readonly sourceUrl?: string;
+  readonly discoveredAt?: string;
 }
 
 export interface CustomSourceSelectors {
@@ -144,7 +165,7 @@ export interface InternshipOffer {
   readonly externalId?: string | null;
   readonly title: string;
   readonly organization: string;
-  readonly organizationSummary: string;
+  readonly organizationSummary: string | null;
   readonly location: string;
   readonly workMode: WorkMode;
   readonly contractType?: string | null;
@@ -161,6 +182,7 @@ export interface InternshipOffer {
   readonly collectedAt?: string;
   readonly discoveredAt?: string;
   readonly collectionMode?: CollectionMode;
+  readonly contentAccessible?: boolean;
   readonly accessMode?: JobBoardAccessMode;
   readonly verificationStatus?: OfferVerificationStatus;
   readonly verificationLevel?: VerificationLevel;
@@ -172,8 +194,11 @@ export interface InternshipOffer {
   readonly requirements: readonly string[];
   readonly channels: readonly ApplicationChannel[];
   readonly status: ApplicationStatus;
+  readonly openedAt?: string;
+  readonly openedViaChannelId?: string;
   readonly sentAt?: string;
   readonly sentViaChannelId?: string;
+  readonly sentConfirmed?: boolean;
 }
 
 export interface PreparedDossier {
@@ -181,6 +206,9 @@ export interface PreparedDossier {
   readonly language: CoverLetterLanguage;
   readonly tone: CoverLetterTone;
   readonly emailSubject: string;
+  readonly emailBody: string;
+  readonly formCoverNote: string;
+  readonly recipientEmail: string | null;
   readonly coverLetter: string;
   readonly cvTailoringHighlights: readonly string[];
   readonly matchedSkills: readonly string[];

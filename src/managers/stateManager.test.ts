@@ -24,6 +24,7 @@ const buildTestOffers = () => [
       duration: '6 months',
       source: 'Company Career Page',
       sourceUrl: 'https://example.org/jobs/1',
+      applicationEmail: 'campus@orgai.example',
       requirements: ['TypeScript', 'React'],
     },
     0
@@ -37,6 +38,7 @@ const buildTestOffers = () => [
       duration: '4 months',
       source: 'Company Career Page',
       sourceUrl: 'https://example.org/jobs/2',
+      applicationFormUrl: 'https://jobs.lever.co/orgtelemetry/2',
       requirements: ['TypeScript'],
     },
     1
@@ -50,6 +52,7 @@ const buildTestOffers = () => [
       duration: '3 months',
       source: 'Company Career Page',
       sourceUrl: 'https://example.org/jobs/3',
+      applicationFormUrl: 'https://boards.greenhouse.io/orgmarket/jobs/3',
       requirements: ['React'],
     },
     2
@@ -64,9 +67,10 @@ test('createInitialState starts clean without fabricated seed offers or fake pro
   const counts = selectPipelineCounts(state);
   assert.equal(counts.discovered, 0);
   assert.equal(counts.ready, 0);
+  assert.equal(counts.opened, 0);
 });
 
-test('appReducer handles search results, prepare, custom channel addition, and mark sent transitions', () => {
+test('appReducer separates Opened draft state from explicitly Confirmed Sent state', () => {
   const initialOffers = buildTestOffers();
   let state = createInitialState(undefined, initialOffers);
   const targetOffer = state.offers[0];
@@ -94,17 +98,45 @@ test('appReducer handles search results, prepare, custom channel addition, and m
   });
 
   assert.equal(state.dossiers[targetOffer.id].selectedChannelId, 'custom_email_1');
+  assert.equal(state.dossiers[targetOffer.id].recipientEmail, 'talent@orgai.example');
 
+  // Opening a draft / copying a letter MUST ONLY transition to Opened, never Sent
+  state = appReducer(state, {
+    type: 'MARK_OPENED',
+    offerId: targetOffer.id,
+    channelId: 'custom_email_1',
+    openedAt: '2026-11-16T11:30:00.000Z',
+    notice: 'Draft opened for OrgAI',
+  });
+
+  assert.equal(state.offers[0].status, ApplicationStatus.Opened);
+  assert.equal(selectPipelineCounts(state).opened, 1);
+  assert.equal(selectPipelineCounts(state).sent, 0);
+
+  // Even MARK_SENT without confirmedByUser: true refuses to mark Sent
   state = appReducer(state, {
     type: 'MARK_SENT',
     offerId: targetOffer.id,
     channelId: 'custom_email_1',
+    sentAt: '2026-11-16T11:45:00.000Z',
+    notice: 'Unconfirmed attempt',
+  });
+  assert.equal(state.offers[0].status, ApplicationStatus.Opened);
+  assert.equal(selectPipelineCounts(state).sent, 0);
+
+  // Explicit CONFIRM_SENT transitions to Sent
+  state = appReducer(state, {
+    type: 'CONFIRM_SENT',
+    offerId: targetOffer.id,
+    channelId: 'custom_email_1',
     sentAt: '2026-11-16T12:00:00.000Z',
-    notice: 'Sent to talent@orgai.example',
+    notice: 'Confirmed sent to talent@orgai.example',
   });
 
   assert.equal(state.offers[0].status, ApplicationStatus.Sent);
+  assert.equal(state.offers[0].sentConfirmed, true);
   assert.equal(selectPipelineCounts(state).sent, 1);
+  assert.equal(selectPipelineCounts(state).opened, 0);
 });
 
 test('appReducer delegates errors to errorReducer and filters offers cleanly', () => {
@@ -152,6 +184,7 @@ test('appReducer prevents externally_unverified offers from entering Ready queue
       source: 'Meteojob',
       sourceUrl: 'https://www.meteojob.com/jobs/123',
       collectionMode: 'discovered',
+      contentAccessible: false,
       verificationLevel: 'externally_unverified',
       verificationStatus: 'externally_unverified',
     },
@@ -170,7 +203,7 @@ test('appReducer prevents externally_unverified offers from entering Ready queue
   assert.equal(selectReadyQueue(state).length, 0);
 });
 
-test('serializePersistedState and hydratePersistedState round-trip cleanly including custom sources', () => {
+test('serializePersistedState and hydratePersistedState round-trip cleanly including custom sources and dossiers', () => {
   let state = createInitialState(undefined, buildTestOffers());
   const baseSourceCount = state.customSources.length;
   state = appReducer(state, {
@@ -220,4 +253,3 @@ test('serializePersistedState and hydratePersistedState round-trip cleanly inclu
   assert.equal(fallback.offers.length, createInitialState().offers.length);
   assert.equal(fallback.customSources.length, createInitialState().customSources.length);
 });
-

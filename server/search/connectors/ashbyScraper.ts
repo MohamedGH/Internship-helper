@@ -23,6 +23,8 @@ export const DEFAULT_ASHBY_BOARDS: readonly AshbyTargetBoard[] = [
   { boardName: 'qonto', organization: 'Qonto' },
   { boardName: 'pennylane', organization: 'Pennylane' },
   { boardName: 'dust', organization: 'Dust' },
+  { boardName: 'huggingface', organization: 'Hugging Face' },
+  { boardName: 'pigment', organization: 'Pigment' },
 ];
 
 const ashbyCache = createTtlCache<readonly RawScrapedOffer[]>(5 * 60 * 1000);
@@ -90,7 +92,7 @@ export const parseAshbyBoardPayload = (
     offers.push({
       title,
       organization,
-      organizationSummary: `${organization} — Official Ashby ATS job board.`,
+      organizationSummary: null,
       location,
       workMode: workplaceType,
       contractType:

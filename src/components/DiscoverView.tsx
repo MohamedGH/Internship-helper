@@ -45,9 +45,11 @@ const getStatusLabel = (
     case ApplicationStatus.Drafting:
       return 'Drafting';
     case ApplicationStatus.Ready:
-      return 'Ready to send';
+      return 'Ready to review';
+    case ApplicationStatus.Opened:
+      return 'Opened (Awaiting Sent confirm)';
     case ApplicationStatus.Sent:
-      return 'Sent';
+      return 'Confirmed Sent';
     case ApplicationStatus.Interview:
       return 'Interview';
     case ApplicationStatus.Archived:
@@ -145,7 +147,7 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
 
   const handlePrepareAndOpen = async (offer: InternshipOffer) => {
     if (!state.dossiers[offer.id]) {
-      await prepareOfferDossier(offer, 'fr', 'professional', true);
+      await prepareOfferDossier(offer, 'fr', 'professional', false);
     }
     onOpenDossier(offer.id);
   };
@@ -942,9 +944,11 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                               ? 'text-amber-700'
                               : offer.status === ApplicationStatus.Sent
                                 ? 'text-emerald-700'
-                                : offer.status === ApplicationStatus.Ready
-                                  ? 'text-blue-700'
-                                  : 'text-slate-600'
+                                : offer.status === ApplicationStatus.Opened
+                                  ? 'text-amber-700'
+                                  : offer.status === ApplicationStatus.Ready
+                                    ? 'text-blue-700'
+                                    : 'text-slate-600'
                           }`}
                         >
                           {getStatusLabel(offer.status, isUnverifiedExternal)}
@@ -963,8 +967,10 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                         </a>
                       </h2>
 
-                      <p className="text-sm text-slate-600 leading-relaxed max-w-3xl">
-                        {offer.description}
+                      <p className="text-sm text-slate-600 leading-relaxed max-w-3xl line-clamp-2">
+                        {offer.contentAccessible === false
+                          ? `Content not accessible automatically on ${offer.source}. Open original listing to inspect missions.`
+                          : offer.description || 'See original listing for detailed role scope.'}
                       </p>
 
                       {/* Matched CV Skills & Channel / Provenance line (clean unboxed text) */}
@@ -992,8 +998,15 @@ export const DiscoverView: React.FC<DiscoverViewProps> = ({
                             <span className="font-medium text-slate-800 shrink-0">
                               Where to apply:
                             </span>
-                            <span className="font-mono text-slate-700 truncate max-w-[260px]">
+                            <span className="font-mono text-slate-700 truncate max-w-[220px]">
                               {preferredChannel.target}
+                            </span>
+                            <span
+                              className={`font-medium shrink-0 ${
+                                preferredChannel.verified ? 'text-emerald-700' : 'text-amber-700'
+                              }`}
+                            >
+                              ({preferredChannel.verified ? 'Verified' : 'Unverified'})
                             </span>
                           </div>
                         )}

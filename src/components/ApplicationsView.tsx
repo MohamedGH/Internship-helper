@@ -13,6 +13,7 @@ interface ApplicationsViewProps {
 const STATUS_OPTIONS: ReadonlyArray<{ readonly value: ApplicationStatus; readonly label: string }> =
   [
     { value: ApplicationStatus.Ready, label: 'Ready' },
+    { value: ApplicationStatus.Opened, label: 'Opened' },
     { value: ApplicationStatus.Sent, label: 'Sent' },
     { value: ApplicationStatus.Interview, label: 'Interview' },
     { value: ApplicationStatus.Archived, label: 'Archived' },
@@ -37,14 +38,14 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
             Applications Tracker
           </h1>
           <p className="text-sm text-slate-600 mt-1">
-            Track prepared, sent, and interview-stage applications with direct links to each dossier.
+            Track ready, opened drafts, confirmed sent, and interview-stage applications with direct links to each dossier.
           </p>
         </div>
 
         <div
           role="group"
           aria-label="Filter applications by status"
-          className="inline-flex items-center gap-1 p-1 bg-slate-100 rounded-lg self-start"
+          className="inline-flex flex-wrap items-center gap-1 p-1 bg-slate-100 rounded-lg self-start"
         >
           <button
             type="button"
@@ -57,7 +58,7 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
           >
             All
           </button>
-          {STATUS_OPTIONS.slice(0, 3).map((opt) => (
+          {STATUS_OPTIONS.slice(0, 4).map((opt) => (
             <button
               key={opt.value}
               type="button"
@@ -80,7 +81,7 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
             No tracked applications in this view
           </h2>
           <p className="text-sm text-slate-600 max-w-md mx-auto">
-            Prepare an application dossier or send one from the Review Queue to track it here.
+            Prepare an application dossier or confirm a sent application from the Review Queue to track it here.
           </p>
           <button
             type="button"
@@ -100,7 +101,7 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
                   <th className="py-3 px-4">Organization &amp; Role</th>
                   <th className="py-3 px-4">Source</th>
                   <th className="py-3 px-4">Channel</th>
-                  <th className="py-3 px-4">Dispatched</th>
+                  <th className="py-3 px-4">Activity Date</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4 text-right">Dossier</th>
                 </tr>
@@ -110,9 +111,13 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
                   const dossier = state.dossiers[offer.id];
                   const channel = selectPreferredChannel(
                     offer.channels,
-                    offer.sentViaChannelId ?? dossier?.selectedChannelId
+                    offer.sentViaChannelId ?? offer.openedViaChannelId ?? dossier?.selectedChannelId
                   );
-                  const sentDate = offer.sentAt ? offer.sentAt.slice(0, 10) : '—';
+                  const dateDisplay = offer.sentAt
+                    ? `Sent ${offer.sentAt.slice(0, 10)}`
+                    : offer.openedAt
+                      ? `Opened ${offer.openedAt.slice(0, 10)}`
+                      : '—';
 
                   return (
                     <tr key={offer.id} className="hover:bg-slate-50/70 transition-colors">
@@ -127,7 +132,7 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
                         {channel?.target ?? 'Not set'}
                       </td>
                       <td className="py-3.5 px-4 text-xs font-mono tabular-nums text-slate-600 whitespace-nowrap">
-                        {sentDate}
+                        {dateDisplay}
                       </td>
                       <td className="py-3.5 px-4">
                         <select
@@ -172,7 +177,7 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
               const dossier = state.dossiers[offer.id];
               const channel = selectPreferredChannel(
                 offer.channels,
-                offer.sentViaChannelId ?? dossier?.selectedChannelId
+                offer.sentViaChannelId ?? offer.openedViaChannelId ?? dossier?.selectedChannelId
               );
 
               return (
@@ -180,7 +185,11 @@ export const ApplicationsView: React.FC<ApplicationsViewProps> = ({
                   <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
                     <span className="font-semibold text-slate-900">{offer.organization}</span>
                     <span className="font-mono tabular-nums">
-                      {offer.sentAt ? offer.sentAt.slice(0, 10) : 'Not sent'}
+                      {offer.sentAt
+                        ? `Sent ${offer.sentAt.slice(0, 10)}`
+                        : offer.openedAt
+                          ? `Opened ${offer.openedAt.slice(0, 10)}`
+                          : 'Not sent'}
                     </span>
                   </div>
                   <div className="text-sm font-semibold text-slate-900">{offer.title}</div>

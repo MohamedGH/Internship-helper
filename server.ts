@@ -2,10 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import {
-  discoverChannelsWithGemini,
-  prepareDossierWithGemini,
-} from './server/geminiService.ts';
+import { prepareDossierWithGemini } from './server/geminiService.ts';
 import { discoverChannelsFromUrl } from './server/search/channelScraper.ts';
 import { getJobBoardPolicySnapshots } from './server/search/jobboards/jobBoardSearch.ts';
 import { runScrapingSearch } from './server/search/scraperEngine.ts';
@@ -109,28 +106,8 @@ const startServer = async () => {
         title: String(body.title),
         sourceUrl: typeof body.sourceUrl === 'string' ? body.sourceUrl : undefined,
         applicationUrl: typeof body.applicationUrl === 'string' ? body.applicationUrl : undefined,
+        companyUrl: typeof body.companyUrl === 'string' ? body.companyUrl : undefined,
       });
-
-      if (scrapedChannels.length > 0) {
-        res.json({ channels: scrapedChannels });
-        return;
-      }
-
-      // Optional Gemini fallback only when GEMINI_API_KEY is present and never crashes with 429
-      if (process.env.GEMINI_API_KEY) {
-        try {
-          const aiChannels = await discoverChannelsWithGemini({
-            organization: String(body.organization),
-            title: String(body.title),
-            location: String(body.location ?? ''),
-            sourceUrl: String(body.sourceUrl ?? ''),
-          });
-          res.json({ channels: aiChannels });
-          return;
-        } catch {
-          // Graceful fallback to empty verified channels instead of propagating 429
-        }
-      }
 
       res.json({ channels: scrapedChannels });
     } catch (error) {
@@ -151,6 +128,11 @@ const startServer = async () => {
           code: 'MISSING_DOSSIER_INPUT',
           error: 'Offer and candidate profile are required to prepare a dossier.',
         });
+        return;
+      }
+
+      if (!process.env.GEMINI_API_KEY) {
+        res.json({ fallbackOnly: true });
         return;
       }
 

@@ -79,11 +79,26 @@ export type AppAction =
       readonly channel: ApplicationChannel;
     }
   | {
+      readonly type: 'MARK_OPENED';
+      readonly offerId: string;
+      readonly channelId: string;
+      readonly openedAt: string;
+      readonly notice: string;
+    }
+  | {
+      readonly type: 'CONFIRM_SENT';
+      readonly offerId: string;
+      readonly channelId: string;
+      readonly sentAt: string;
+      readonly notice: string;
+    }
+  | {
       readonly type: 'MARK_SENT';
       readonly offerId: string;
       readonly channelId: string;
       readonly sentAt: string;
       readonly notice: string;
+      readonly confirmedByUser?: boolean;
     }
   | { readonly type: 'SET_OFFER_STATUS'; readonly offerId: string; readonly status: ApplicationStatus }
   | { readonly type: 'RESET_FILTERS' }
@@ -357,13 +372,16 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
         return { ...offer, channels: merged };
       });
       const existingDossier = state.dossiers[action.offerId];
+      const topChannel = action.channels[0];
       const nextDossiers =
-        existingDossier && action.channels[0]
+        existingDossier && topChannel
           ? {
               ...state.dossiers,
               [action.offerId]: {
                 ...existingDossier,
-                selectedChannelId: action.channels[0].id,
+                selectedChannelId: topChannel.id,
+                recipientEmail:
+                  topChannel.type === 'email' && topChannel.verified ? topChannel.target : null,
               },
             }
           : state.dossiers;
@@ -402,6 +420,10 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
             [action.offerId]: {
               ...existingDossier,
               selectedChannelId: action.channel.id,
+              recipientEmail:
+                action.channel.type === 'email' && action.channel.verified
+                  ? action.channel.target
+                  : null,
             },
           }
         : state.dossiers;
@@ -413,7 +435,25 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
       };
     }
 
-    case 'MARK_SENT': {
+    case 'MARK_OPENED': {
+      const updatedOffers = state.offers.map((offer) =>
+        offer.id === action.offerId
+          ? {
+              ...offer,
+              status: ApplicationStatus.Opened,
+              openedAt: action.openedAt,
+              openedViaChannelId: action.channelId,
+            }
+          : offer
+      );
+      return {
+        ...state,
+        offers: updatedOffers,
+        lastDispatchNotice: action.notice,
+      };
+    }
+
+    case 'CONFIRM_SENT': {
       const updatedOffers = state.offers.map((offer) =>
         offer.id === action.offerId
           ? {
@@ -421,6 +461,44 @@ export const appReducer = (state: AppState, action: AppAction): AppState => {
               status: ApplicationStatus.Sent,
               sentAt: action.sentAt,
               sentViaChannelId: action.channelId,
+              sentConfirmed: true,
+            }
+          : offer
+      );
+      return {
+        ...state,
+        offers: updatedOffers,
+        lastDispatchNotice: action.notice,
+      };
+    }
+
+    case 'MARK_SENT': {
+      // Reliability guard: never mark as Sent without explicit user confirmation
+      if (action.confirmedByUser !== true) {
+        const updatedOffers = state.offers.map((offer) =>
+          offer.id === action.offerId
+            ? {
+                ...offer,
+                status: ApplicationStatus.Opened,
+                openedAt: action.sentAt,
+                openedViaChannelId: action.channelId,
+              }
+            : offer
+        );
+        return {
+          ...state,
+          offers: updatedOffers,
+          lastDispatchNotice: action.notice,
+        };
+      }
+      const updatedOffers = state.offers.map((offer) =>
+        offer.id === action.offerId
+          ? {
+              ...offer,
+              status: ApplicationStatus.Sent,
+              sentAt: action.sentAt,
+              sentViaChannelId: action.channelId,
+              sentConfirmed: true,
             }
           : offer
       );
@@ -479,18 +557,22 @@ export const selectDossierByOfferId = (
 export const selectReadyQueue = (state: AppState): readonly InternshipOffer[] =>
   state.offers.filter(
     (offer) =>
-      (offer.status === ApplicationStatus.Ready || offer.status === ApplicationStatus.Drafting) &&
+      (offer.status === ApplicationStatus.Ready ||
+        offer.status === ApplicationStatus.Drafting ||
+        offer.status === ApplicationStatus.Opened) &&
       offer.verificationLevel !== 'externally_unverified' &&
       offer.verificationStatus !== 'externally_unverified' &&
+      offer.contentAccessible !== false &&
       Boolean(state.dossiers[offer.id])
   );
 
 export const selectTrackedApplications = (state: AppState): readonly InternshipOffer[] =>
   state.offers.filter(
     (offer) =>
+      offer.status === ApplicationStatus.Ready ||
+      offer.status === ApplicationStatus.Opened ||
       offer.status === ApplicationStatus.Sent ||
       offer.status === ApplicationStatus.Interview ||
-      offer.status === ApplicationStatus.Ready ||
       offer.status === ApplicationStatus.Archived
   );
 
@@ -498,10 +580,12 @@ export const selectPipelineCounts = (state: AppState) => {
   const discovered = state.offers.length;
   const ready = state.offers.filter(
     (o) =>
-      o.status === ApplicationStatus.Ready &&
+      (o.status === ApplicationStatus.Ready || o.status === ApplicationStatus.Opened) &&
       o.verificationLevel !== 'externally_unverified' &&
+      o.contentAccessible !== false &&
       Boolean(state.dossiers[o.id])
   ).length;
+  const opened = state.offers.filter((o) => o.status === ApplicationStatus.Opened).length;
   const sent = state.offers.filter(
     (o) => o.status === ApplicationStatus.Sent || o.status === ApplicationStatus.Interview
   ).length;
@@ -511,7 +595,7 @@ export const selectPipelineCounts = (state: AppState) => {
       o.channels.some((c) => c.verified)
   ).length;
 
-  return { discovered, ready, sent, channelsVerified };
+  return { discovered, ready, opened, sent, channelsVerified };
 };
 
 const STORAGE_KEY = 'stagepilot_app_state_v2';
@@ -552,13 +636,38 @@ export const hydratePersistedState = (raw: string | null): AppState => {
           ]
         : base.customSources;
 
+    const hydratedOffers = Array.isArray(parsed.offers)
+      ? parsed.offers.map((o) => ({
+          ...o,
+          organizationSummary: o.organizationSummary ?? null,
+          contentAccessible:
+            typeof o.contentAccessible === 'boolean'
+              ? o.contentAccessible
+              : o.collectionMode !== 'discovered',
+        }))
+      : base.offers;
+
+    const rawDossiers =
+      parsed.dossiers && typeof parsed.dossiers === 'object' ? parsed.dossiers : {};
+    const hydratedDossiers: Record<string, PreparedDossier> = {};
+    for (const [k, d] of Object.entries(rawDossiers)) {
+      if (d && typeof d === 'object') {
+        hydratedDossiers[k] = {
+          ...d,
+          emailBody: typeof d.emailBody === 'string' ? d.emailBody : '',
+          formCoverNote: typeof d.formCoverNote === 'string' ? d.formCoverNote : '',
+          recipientEmail: d.recipientEmail ?? null,
+        };
+      }
+    }
+
     return {
       ...base,
       profile: parsed.profile && typeof parsed.profile === 'object' ? parsed.profile : base.profile,
       searchQuery: parsed.searchQuery?.keywords ? parsed.searchQuery : base.searchQuery,
       customSources: mergedSources,
-      offers: Array.isArray(parsed.offers) ? parsed.offers : base.offers,
-      dossiers: parsed.dossiers && typeof parsed.dossiers === 'object' ? parsed.dossiers : base.dossiers,
+      offers: hydratedOffers,
+      dossiers: hydratedDossiers,
     };
   } catch {
     return base;

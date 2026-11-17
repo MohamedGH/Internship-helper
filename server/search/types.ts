@@ -104,6 +104,7 @@ export interface RawScrapedOffer {
   readonly isAuthorizedApi?: boolean;
   readonly isRssFeed?: boolean;
   readonly isExternalDiscovery?: boolean;
+  readonly contentAccessible?: boolean;
   readonly accessMode?: JobBoardAccessMode | 'ats_api' | 'custom_html';
   readonly collectionMode?: CollectionMode;
 }
@@ -113,8 +114,9 @@ export interface NormalizedScrapedOffer {
   readonly externalId: string | null;
   readonly title: string;
   readonly organization: string;
-  readonly organizationSummary: string;
+  readonly organizationSummary: string | null;
   readonly description: string;
+  readonly contentAccessible: boolean;
   readonly location: string;
   readonly workMode: WorkModeValue;
   readonly contractType: string | null;

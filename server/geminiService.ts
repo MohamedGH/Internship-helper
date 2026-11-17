@@ -197,9 +197,9 @@ export const prepareDossierWithGemini = async (input: {
   offer: {
     title: string;
     organization: string;
-    organizationSummary: string;
+    organizationSummary: string | null;
     location: string;
-    duration: string;
+    duration: string | null;
     description: string;
     requirements: string[];
   };
@@ -219,6 +219,8 @@ export const prepareDossierWithGemini = async (input: {
   tone: 'professional' | 'enthusiastic' | 'concise';
 }): Promise<{
   emailSubject: string;
+  emailBody: string;
+  formCoverNote: string;
   coverLetter: string;
   cvTailoringHighlights: string[];
 }> => {
@@ -226,30 +228,35 @@ export const prepareDossierWithGemini = async (input: {
   const langLabel = input.language === 'fr' ? 'French (Lettre de motivation)' : 'English';
 
   const prompt = [
-    `Prepare a tailored internship application dossier in ${langLabel} with a ${input.tone} tone.`,
+    `Prepare two distinct internship application documents in ${langLabel} with a ${input.tone} tone.`,
     ``,
     `OFFER & ORGANIZATION:`,
     `- Role: ${input.offer.title}`,
     `- Organization: ${input.offer.organization}`,
-    `- Summary: ${input.offer.organizationSummary}`,
-    `- Location & Duration: ${input.offer.location}, ${input.offer.duration}`,
-    `- Description: ${input.offer.description}`,
-    `- Requirements: ${input.offer.requirements.join(', ')}`,
+    ...(input.offer.organizationSummary
+      ? [`- Organization Context (verified): ${input.offer.organizationSummary}`]
+      : [`- Organization Context: Not provided in listing (DO NOT invent or guess company activity).`]),
+    `- Location & Duration: ${input.offer.location ?? 'Unspecified'}, ${input.offer.duration ?? 'Unspecified'}`,
+    `- Description: ${input.offer.description || 'Not available'}`,
+    `- Requirements: ${(input.offer.requirements ?? []).join(', ')}`,
     ``,
     `CANDIDATE PROFILE & CV:`,
-    `- Name: ${input.profile.fullName}`,
-    `- Contact: ${input.profile.email} | ${input.profile.phone}`,
-    `- School & Degree: ${input.profile.degree} at ${input.profile.school}`,
-    `- Availability: ${input.profile.availability}`,
-    `- Portfolio: ${input.profile.portfolioUrl}`,
-    `- Skills: ${input.profile.skills.join(', ')}`,
-    `- Key Experiences: ${input.profile.experiences.join(' | ')}`,
-    `- CV Notes: ${input.profile.rawCvText.slice(0, 1200)}`,
+    `- Name: ${input.profile.fullName ?? ''}`,
+    `- Contact: ${input.profile.email ?? ''} | ${input.profile.phone ?? ''}`,
+    `- School & Degree: ${input.profile.degree ?? ''} at ${input.profile.school ?? ''}`,
+    `- Availability: ${input.profile.availability ?? ''}`,
+    `- Portfolio: ${input.profile.portfolioUrl ?? ''}`,
+    `- Skills: ${(input.profile.skills ?? []).join(', ')}`,
+    `- Key Experiences: ${(input.offer && input.profile.experiences ? input.profile.experiences : []).join(' | ')}`,
+    `- CV Notes: ${(input.profile.rawCvText ?? '').slice(0, 1200)}`,
     ``,
-    `Instructions:`,
-    `- Write an authentic, specific cover letter (220-300 words) connecting the candidate's actual skills and projects directly to ${input.offer.organization} and ${input.offer.title}.`,
-    `- Write a concise, clear email subject line.`,
-    `- Provide 3-4 actionable CV tailoring bullet points showing exactly what to emphasize on the CV for this specific offer.`,
+    `STRICT RULES:`,
+    `1. Do NOT invent any company mission, product details, or candidate experience not present above.`,
+    `2. "coverLetter": Write an authentic, structured cover letter (220-280 words) grounded strictly in the real CV experiences/skills and the real offer missions/technologies.`,
+    `3. "emailBody": Write a separate, concise application email (80-130 words) with brief intro, motivation, availability, mention of attached CV & cover letter, and sign-off.`,
+    `4. "formCoverNote": Write a short companion note (60-90 words) ready to paste into an ATS application form message box.`,
+    `5. "emailSubject": Concise, professional email subject line.`,
+    `6. "cvTailoringHighlights": 3-4 actionable CV bullets referencing actual CV skills & experiences.`,
   ].join('\n');
 
   const response = await ai.models.generateContent({
@@ -264,6 +271,14 @@ export const prepareDossierWithGemini = async (input: {
             type: Type.STRING,
             description: 'Concise email subject line for sending the application.',
           },
+          emailBody: {
+            type: Type.STRING,
+            description: 'Concise application email distinct from the full cover letter.',
+          },
+          formCoverNote: {
+            type: Type.STRING,
+            description: 'Short companion message for web application forms.',
+          },
           coverLetter: {
             type: Type.STRING,
             description: 'Complete tailored cover letter / lettre de motivation.',
@@ -274,22 +289,27 @@ export const prepareDossierWithGemini = async (input: {
             description: '3-4 specific bullet points on how to tailor the CV for this offer.',
           },
         },
-        required: ['emailSubject', 'coverLetter', 'cvTailoringHighlights'],
+        required: ['emailSubject', 'emailBody', 'formCoverNote', 'coverLetter', 'cvTailoringHighlights'],
       },
     },
   });
 
   const parsed = JSON.parse((response.text ?? '{}').trim()) as {
     emailSubject?: string;
+    emailBody?: string;
+    formCoverNote?: string;
     coverLetter?: string;
     cvTailoringHighlights?: string[];
   };
 
   return {
     emailSubject: parsed.emailSubject ?? `Candidature ${input.offer.title} — ${input.profile.fullName}`,
+    emailBody: parsed.emailBody ?? '',
+    formCoverNote: parsed.formCoverNote ?? '',
     coverLetter: parsed.coverLetter ?? '',
     cvTailoringHighlights: Array.isArray(parsed.cvTailoringHighlights)
       ? parsed.cvTailoringHighlights
       : [],
   };
 };
+

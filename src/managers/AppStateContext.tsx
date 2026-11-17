@@ -231,14 +231,28 @@ export const AppStateProvider: React.FC<{ readonly children: React.ReactNode }> 
         }
 
         const payload = (await res.json()) as {
+          fallbackOnly?: boolean;
           emailSubject?: string;
+          emailBody?: string;
+          formCoverNote?: string;
           coverLetter?: string;
           cvTailoringHighlights?: string[];
         };
 
+        if (payload.fallbackOnly) {
+          dispatch({
+            type: 'PREPARE_SUCCEEDED',
+            offerId: offer.id,
+            dossier: instantDraft,
+          });
+          return instantDraft;
+        }
+
         const aiDossier: PreparedDossier = {
           ...instantDraft,
           emailSubject: payload.emailSubject?.trim() || instantDraft.emailSubject,
+          emailBody: payload.emailBody?.trim() || instantDraft.emailBody,
+          formCoverNote: payload.formCoverNote?.trim() || instantDraft.formCoverNote,
           coverLetter: payload.coverLetter?.trim() || instantDraft.coverLetter,
           cvTailoringHighlights:
             Array.isArray(payload.cvTailoringHighlights) &&

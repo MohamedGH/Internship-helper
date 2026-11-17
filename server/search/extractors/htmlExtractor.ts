@@ -72,13 +72,25 @@ export const extractCompanyFromPage = ($: cheerio.CheerioAPI, pageUrl: string): 
   }
 };
 
+const isAutomatedNoReplyEmail = (email: string): boolean => {
+  const local = email.split('@')[0] ?? '';
+  return (
+    local.includes('noreply') ||
+    local.includes('no-reply') ||
+    local.includes('donotreply') ||
+    local.includes('do-not-reply') ||
+    local.includes('mailer-daemon') ||
+    local.includes('bounce')
+  );
+};
+
 export const extractEmailsFromHtml = ($: cheerio.CheerioAPI): readonly string[] => {
   const emails = new Set<string>();
 
   $('a[href^="mailto:"]').each((_idx, el) => {
     const href = $(el).attr('href') ?? '';
     const addr = href.replace(/^mailto:/i, '').split('?')[0].trim().toLowerCase();
-    if (addr.includes('@') && !addr.includes('example.')) {
+    if (addr.includes('@') && !addr.includes('example.') && !isAutomatedNoReplyEmail(addr)) {
       emails.add(addr);
     }
   });
@@ -92,7 +104,8 @@ export const extractEmailsFromHtml = ($: cheerio.CheerioAPI): readonly string[] 
       !lower.endsWith('.jpg') &&
       !lower.endsWith('.svg') &&
       !lower.includes('example.') &&
-      !lower.includes('sentry.io')
+      !lower.includes('sentry.io') &&
+      !isAutomatedNoReplyEmail(lower)
     ) {
       emails.add(lower);
     }
@@ -310,3 +323,103 @@ export const extractDetailPageMetadata = (
     startDate: mainText ? extractExplicitStartDate(mainText) : null,
   };
 };
+
+export interface DetectedHtmlForm {
+  readonly actionUrl: string;
+  readonly isApplicationForm: boolean;
+  readonly label: string;
+}
+
+export const extractContactFormsFromHtml = (
+  $: cheerio.CheerioAPI,
+  pageUrl: string
+): readonly DetectedHtmlForm[] => {
+  const forms: DetectedHtmlForm[] = [];
+  const seenActions = new Set<string>();
+
+  $('form').each((_idx, el) => {
+    const $form = $(el);
+    const rawAction = $form.attr('action');
+    const actionUrl = rawAction ? resolveSafeHref(rawAction, pageUrl) ?? pageUrl : pageUrl;
+    if (seenActions.has(actionUrl)) return;
+
+    const formText = `${$form.attr('id') ?? ''} ${$form.attr('class') ?? ''} ${$form.text()}`.toLowerCase();
+    const hasEmailOrMessageField =
+      $form.find('input[type="email"], input[name*="email" i], textarea, input[type="file"]').length > 0;
+
+    if (!hasEmailOrMessageField) return;
+
+    const isApplicationForm =
+      /\b(apply|postul|candidat|cv|resume|stage|intern|recruit|carri|career)\b/.test(formText) ||
+      /\b(apply|postul|candidat|careers|jobs|recrut)\b/.test(pageUrl.toLowerCase());
+
+    const isContactForm =
+      isApplicationForm ||
+      /\b(contact|message|nous-contacter|hello|inquir)\b/.test(formText) ||
+      /\b(contact|nous-contacter)\b/.test(pageUrl.toLowerCase());
+
+    if (!isContactForm) return;
+
+    seenActions.add(actionUrl);
+    forms.push({
+      actionUrl,
+      isApplicationForm,
+      label: isApplicationForm ? 'Direct Web Application Form' : 'Company Contact Form',
+    });
+  });
+
+  return forms;
+};
+
+export interface OfficialCompanyPageLinks {
+  readonly careerPages: readonly string[];
+  readonly contactPages: readonly string[];
+}
+
+export const extractOfficialContactAndCareerLinks = (
+  $: cheerio.CheerioAPI,
+  pageUrl: string
+): OfficialCompanyPageLinks => {
+  let baseOrigin = '';
+  try {
+    baseOrigin = new URL(pageUrl).origin.toLowerCase();
+  } catch {
+    return { careerPages: [], contactPages: [] };
+  }
+
+  const careerPages = new Set<string>();
+  const contactPages = new Set<string>();
+
+  $('a[href]').each((_idx, el) => {
+    const resolved = resolveSafeHref($(el).attr('href'), pageUrl);
+    if (!resolved) return;
+
+    let resolvedOrigin = '';
+    try {
+      resolvedOrigin = new URL(resolved).origin.toLowerCase();
+    } catch {
+      return;
+    }
+
+    if (resolvedOrigin !== baseOrigin) return;
+
+    const anchorText = $(el).text().replace(/\s+/g, ' ').trim().toLowerCase();
+    const combined = `${resolved.toLowerCase()} ${anchorText}`;
+
+    if (
+      /\b(careers?|jobs?|recrutement|nous-rejoindre|rejoindre|join-us|stages?|internships?)\b/.test(
+        combined
+      )
+    ) {
+      careerPages.add(resolved);
+    } else if (/\b(contact|nous-contacter|contactez-nous|get-in-touch)\b/.test(combined)) {
+      contactPages.add(resolved);
+    }
+  });
+
+  return {
+    careerPages: Array.from(careerPages),
+    contactPages: Array.from(contactPages),
+  };
+};
+

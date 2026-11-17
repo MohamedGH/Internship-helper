@@ -1,4 +1,5 @@
 import {
+  ApplicationChannel,
   ApplicationStatus,
   ChannelType,
   CustomSource,
@@ -171,6 +172,7 @@ export interface RawOfferInput {
   readonly collectedAt?: string;
   readonly discoveredAt?: string;
   readonly collectionMode?: InternshipOffer['collectionMode'];
+  readonly contentAccessible?: boolean;
   readonly accessMode?: InternshipOffer['accessMode'];
   readonly verificationStatus?: InternshipOffer['verificationStatus'];
   readonly verificationLevel?: InternshipOffer['verificationLevel'];
@@ -201,21 +203,23 @@ export const normalizeOffer = (
   const isExternalUnverified =
     raw.verificationLevel === 'externally_unverified' ||
     raw.verificationStatus === 'externally_unverified' ||
-    raw.collectionMode === 'discovered';
+    raw.collectionMode === 'discovered' ||
+    raw.contentAccessible === false;
 
-  const rawChannels: Array<{
-    type: ChannelType;
-    target: string;
-    label: string;
-    contactName?: string;
-  }> = [];
+  const contentAccessible = raw.contentAccessible ?? !isExternalUnverified;
+
+  const rawChannels: Array<Partial<ApplicationChannel>> = [];
 
   if (!isExternalUnverified && raw.applicationEmail && raw.applicationEmail.trim().includes('@')) {
     rawChannels.push({
       type: ChannelType.Email,
       target: raw.applicationEmail.trim(),
-      label: raw.contactName ? `${raw.contactName} (Email)` : 'Direct Recruiting Email',
+      label: raw.contactName ? `${raw.contactName} (Email)` : 'Published Recruiting Email',
       contactName: raw.contactName ?? undefined,
+      verified: true,
+      verificationStatus: 'verified_published',
+      sourceUrl,
+      discoveredAt: raw.collectedAt ?? raw.discoveredAt,
     });
   }
 
@@ -223,14 +227,32 @@ export const normalizeOffer = (
     ? ''
     : raw.applicationFormUrl?.trim() || raw.applicationUrl?.trim() || '';
   if (resolvedFormUrl.startsWith('http')) {
+    const isAts =
+      raw.verificationStatus === 'verified_ats_api' ||
+      resolvedFormUrl.includes('greenhouse.io') ||
+      resolvedFormUrl.includes('lever.co') ||
+      resolvedFormUrl.includes('ashbyhq.com') ||
+      resolvedFormUrl.includes('welcomekit.co') ||
+      resolvedFormUrl.includes('workday') ||
+      resolvedFormUrl.includes('teamtailor.com') ||
+      resolvedFormUrl.includes('taleez.com') ||
+      resolvedFormUrl.includes('smartrecruiters.com');
     rawChannels.push({
       type: ChannelType.Form,
       target: resolvedFormUrl,
-      label: 'Official Application Form',
+      label: isAts ? 'Official ATS Application Form' : 'Official Application Form',
+      channelRole: 'direct_form',
+      verified: true,
+      verificationStatus: isAts ? 'verified_ats_form' : 'verified_published',
+      relevance: 'high',
+      sourceUrl,
+      discoveredAt: raw.collectedAt ?? raw.discoveredAt,
     });
   }
 
-  const channels = isExternalUnverified ? [] : normalizeChannelsFromRaw(id, rawChannels, sourceUrl);
+  const channels = isExternalUnverified
+    ? []
+    : normalizeChannelsFromRaw(id, rawChannels, sourceUrl, raw.collectedAt ?? raw.discoveredAt);
   const durationMonths =
     typeof raw.durationMonths === 'number' && raw.durationMonths > 0
       ? raw.durationMonths
@@ -247,8 +269,7 @@ export const normalizeOffer = (
     externalId: raw.externalId ?? null,
     title: raw.title.trim(),
     organization: raw.organization.trim(),
-    organizationSummary:
-      raw.organizationSummary?.trim() || `${raw.organization.trim()} engineering and product team.`,
+    organizationSummary: raw.organizationSummary?.trim() || null,
     location: raw.location?.trim() || 'Unspecified',
     workMode: mapRawWorkMode(raw.workMode ?? undefined),
     contractType: raw.contractType?.trim() || null,
@@ -265,6 +286,7 @@ export const normalizeOffer = (
     collectedAt: raw.collectedAt,
     discoveredAt: raw.discoveredAt ?? raw.collectedAt,
     collectionMode: raw.collectionMode ?? (isExternalUnverified ? 'discovered' : 'collected'),
+    contentAccessible,
     accessMode: raw.accessMode,
     verificationStatus: raw.verificationStatus,
     verificationLevel:
@@ -273,9 +295,7 @@ export const normalizeOffer = (
     experienceLevel: raw.experienceLevel ?? null,
     languages: raw.languages ?? [],
     matchScore: typeof raw.matchScore === 'number' ? raw.matchScore : undefined,
-    description:
-      raw.description?.trim() ||
-      `Internship / stage opportunity as ${raw.title.trim()} at ${raw.organization.trim()}.`,
+    description: raw.description?.trim() || '',
     requirements: (raw.requirements ?? []).map((item) => item.trim()).filter(Boolean),
     channels,
     status: ApplicationStatus.Discovered,
